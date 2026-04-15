@@ -2,8 +2,11 @@ name: Update Golf Ranking
 
 on:
   schedule:
-    - cron: '0 13 * * *'   # 매일 22:00 KST (UTC+9 → UTC 13:00)
-  workflow_dispatch:         # 수동 실행 버튼도 유지
+    - cron: '0 13 * * *'   # 매일 22:00 KST
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -31,7 +34,7 @@ jobs:
         run: python generate_html.py
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: .
