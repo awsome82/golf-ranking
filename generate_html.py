@@ -1,5 +1,7 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+KST = timezone(timedelta(hours=9))
 
 with open("data.json", encoding="utf-8") as f:
     d = json.load(f)
@@ -9,8 +11,8 @@ MEDAL = {1: "🥇", 2: "🥈", 3: "🥉"}
 def rows(items, show_count=False):
     html = ""
     for item in items:
-        r    = item["rank"]
-        name = item["name"]
+        r     = item["rank"]
+        name  = item["name"]
         medal = MEDAL.get(r, f'<span class="rank-num">{r}</span>')
         extra = f'<span class="count">{item["count"]}회</span>' if show_count else ""
         html += f"""
@@ -50,7 +52,7 @@ html = f"""<!DOCTYPE html>
   header {{
     background: linear-gradient(135deg, #1a7f4b, #2ecc71);
     color: white;
-    padding: 1.2rem 1rem 1rem;
+    padding: 1.2rem 1rem 0.8rem;
     text-align: center;
     position: sticky;
     top: 0;
@@ -59,14 +61,74 @@ html = f"""<!DOCTYPE html>
   }}
 
   header h1 {{ font-size: 1.2rem; font-weight: 700; }}
-  header p  {{ font-size: 0.78rem; opacity: 0.85; margin-top: 0.2rem; }}
+
+  .header-sub {{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 0.35rem;
+    flex-wrap: wrap;
+  }}
+
+  .header-sub p {{
+    font-size: 0.78rem;
+    opacity: 0.9;
+  }}
+
+  #update-btn {{
+    background: rgba(255,255,255,0.25);
+    border: 1px solid rgba(255,255,255,0.6);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.7rem;
+    border-radius: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    transition: background 0.2s;
+    white-space: nowrap;
+  }}
+
+  #update-btn:hover {{ background: rgba(255,255,255,0.35); }}
+  #update-btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
+
+  .spinner {{
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }}
+  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+
+  #toast {{
+    position: fixed;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: #fff;
+    padding: 0.55rem 1.2rem;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    z-index: 999;
+    white-space: nowrap;
+  }}
+  #toast.show {{ opacity: 1; }}
 
   .tabs {{
     display: flex;
     background: #fff;
     border-bottom: 2px solid #e0e0e0;
     position: sticky;
-    top: 62px;
+    top: 70px;
     z-index: 99;
     overflow-x: auto;
     scrollbar-width: none;
@@ -125,7 +187,7 @@ html = f"""<!DOCTYPE html>
   }}
 
   .rank-cell {{ width: 28px; text-align: center; }}
-  .rank-num  {{
+  .rank-num {{
     display: inline-block;
     width: 20px; height: 20px;
     background: #f0f0f0;
@@ -139,9 +201,7 @@ html = f"""<!DOCTYPE html>
   .name-cell {{ font-weight: 600; }}
   .count     {{ font-size: 0.78rem; color: #888; }}
 
-  tr:not(:last-child) td {{
-    border-bottom: 1px solid #f5f5f5;
-  }}
+  tr:not(:last-child) td {{ border-bottom: 1px solid #f5f5f5; }}
 
   .stats {{
     display: flex;
@@ -164,26 +224,33 @@ html = f"""<!DOCTYPE html>
 
 <header>
   <h1>⛳ {d['course']} 랭킹</h1>
-  <p>업데이트: {d['updated_at']} &nbsp;|&nbsp; {d['valid_rounds']}라운드 · {d['unique_players']}명</p>
+  <div class="header-sub">
+    <p id="updated-text">업데이트: {d['updated_at']} &nbsp;|&nbsp; {d['valid_rounds']}라운드 · {d['unique_players']}명</p>
+    <button id="update-btn" onclick="triggerUpdate()">
+      <span id="btn-icon">🔄</span> 업데이트
+    </button>
+  </div>
 </header>
 
+<div id="toast"></div>
+
 <div class="tabs">
-  <div class="tab active" onclick="show('general', this)">일반스코어</div>
-  <div class="tab"        onclick="show('handicap', this)">핸디캡</div>
+  <div class="tab active" onclick="show('handicap', this)">핸디캡</div>
+  <div class="tab"        onclick="show('general',  this)">일반스코어</div>
   <div class="tab"        onclick="show('played',   this)">최다플레이</div>
 </div>
 
-<div id="general" class="section active">
-  <div class="grid">
-    {table_card("🏌️ 남자 일반스코어 TOP12", d['general_M'])}
-    {table_card("🏌️‍♀️ 여자 일반스코어 TOP12", d['general_F'])}
-  </div>
-</div>
-
-<div id="handicap" class="section">
+<div id="handicap" class="section active">
   <div class="grid">
     {table_card("🏌️ 남자 핸디캡 TOP12", d['handicap_M'])}
     {table_card("🏌️‍♀️ 여자 핸디캡 TOP12", d['handicap_F'])}
+  </div>
+</div>
+
+<div id="general" class="section">
+  <div class="grid">
+    {table_card("🏌️ 남자 일반스코어 TOP12", d['general_M'])}
+    {table_card("🏌️‍♀️ 여자 일반스코어 TOP12", d['general_F'])}
   </div>
 </div>
 
@@ -205,11 +272,68 @@ html = f"""<!DOCTYPE html>
 </div>
 
 <script>
+  // ── 탭 전환 ──────────────────────────────────────────
   function show(id, el) {{
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.getElementById(id).classList.add('active');
     el.classList.add('active');
+  }}
+
+  // ── 토스트 메시지 ──────────────────────────────────
+  function toast(msg, duration=3000) {{
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), duration);
+  }}
+
+  // ── GitHub Actions 트리거 ──────────────────────────
+  // GitHub Personal Access Token (repo scope 필요)
+  // 아래 두 값을 본인 것으로 교체하세요
+  const GITHUB_OWNER = "YOUR_GITHUB_USERNAME";   // ← 본인 GitHub 아이디
+  const GITHUB_REPO  = "golf-ranking";            // ← 레포 이름
+  const GITHUB_PAT   = "YOUR_PAT_TOKEN";          // ← 발급받은 PAT
+
+  async function triggerUpdate() {{
+    const btn  = document.getElementById('update-btn');
+    const icon = document.getElementById('btn-icon');
+
+    btn.disabled = true;
+    icon.outerHTML = '<span class="spinner" id="btn-icon"></span>';
+    toast("업데이트 요청 중...", 2000);
+
+    try {{
+      const res = await fetch(
+        `https://api.github.com/repos/${{GITHUB_OWNER}}/${{GITHUB_REPO}}/actions/workflows/update.yml/dispatches`,
+        {{
+          method: "POST",
+          headers: {{
+            "Authorization": `Bearer ${{GITHUB_PAT}}`,
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+          }},
+          body: JSON.stringify({{ ref: "main" }}),
+        }}
+      );
+
+      if (res.status === 204) {{
+        toast("✅ 업데이트 시작! 약 1~2분 후 새로고침하세요.");
+        // 2분 후 자동 새로고침
+        setTimeout(() => location.reload(), 120000);
+      }} else {{
+        const err = await res.json().catch(() => ({{}}));
+        toast("❌ 오류: " + (err.message || res.status));
+      }}
+    }} catch(e) {{
+      toast("❌ 네트워크 오류: " + e.message);
+    }} finally {{
+      setTimeout(() => {{
+        const spinner = document.getElementById('btn-icon');
+        if (spinner) spinner.outerHTML = '<span id="btn-icon">🔄</span>';
+        btn.disabled = false;
+      }}, 5000);
+    }}
   }}
 </script>
 </body>
