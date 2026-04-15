@@ -1,200 +1,202 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from bs4 import BeautifulSoup
 import requests
+import re
 import os
-import time
-from datetime import datetime, timedelta
-import pytz
+import json
+from datetime import datetime
+from collections import defaultdict, Counter
 
-# --- 설정 ---
-MEAL_URL = 'https://oksu.sen.es.kr/136474/subMenu.do'
-BOT_TOKEN = os.environ['TELEGRAM_TOKEN']
-CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
-KST = pytz.timezone('Asia/Seoul')
+TARGET_COURSE = "베어리버 리버"
+START_DATE    = "2026-04-08"
+USER_ID       = os.environ.get("SG_ID", "")
+PASSWORD      = os.environ.get("SG_PW", "")
 
+EXCLUDED_PLAYERS = set()
 
-def setup_driver():
-    chrome_options = Options()
-    chrome_options.add_argument('--headless')
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('--disable-dev-shm-usage')
-    chrome_options.add_argument('--disable-gpu')
-    chrome_options.add_argument('--window-size=1920,1080')
-    chrome_options.add_argument(
-        'user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    )
-    return webdriver.Chrome(options=chrome_options)
+FEMALE_PLAYERS = {
+    "안은영", "제둘림", "박기례", "정순이", "김명희", "이매실", "김현애",
+    "김경숙", "강미경", "이미경", "박경희", "황애정", "김은하", "서경숙",
+    "안소영", "임혜정", "김진희", "김선희", "김필례", "장해영", "김승혜",
+}
 
+SINPERIO_EXCLUDED = [3, 4, 8]
+SINPERIO_INCLUDED = [i for i in range(9) if i not in SINPERIO_EXCLUDED]
 
-def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {'chat_id': CHAT_ID, 'text': message, 'parse_mode': 'HTML'}
-    try:
-        res = requests.post(url, json=payload, timeout=10)
-        print(f"텔레그램 메시지 전송: {res.status_code}")
-    except Exception as e:
-        print(f"텔레그램 메시지 전송 실패: {e}")
+BASE_URL  = "https://smanager.sggolf.com/gameInfo/gameDayState"
+LOGIN_URL = "https://screen.sggolf.com/login/checkProcess"
+SCORE_URL = "https://smanager.sggolf.com/gameInfo/popup/scoreCardPp.json"
+HEADERS   = {"User-Agent": "Mozilla/5.0"}
 
+session = requests.Session()
 
-def send_telegram_photo(image_url, caption):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-    payload = {
-        'chat_id': CHAT_ID,
-        'photo': image_url,
-        'caption': caption[:1000],
-        'parse_mode': 'HTML'
-    }
-    try:
-        res = requests.post(url, json=payload, timeout=10)
-        print(f"텔레그램 사진 전송: {res.status_code}")
-        if res.status_code != 200:
-            send_telegram_message(caption + f"\n\n🖼 사진: {image_url}")
-    except Exception as e:
-        print(f"텔레그램 사진 전송 실패: {e}")
-        send_telegram_message(caption)
+def login():
+    data = {"retUrl": "/main", "userId": USER_ID, "passwd": PASSWORD}
+    r = session.post(LOGIN_URL, data=data, headers=HEADERS, timeout=15)
+    return r.status_code == 200 and "isLogin = true" in r.text
 
+def get_total_pages(html):
+    nums = re.findall(r'onclick="moveList\((\d+)\);', html)
+    return max(map(int, nums)) if nums else 1
 
-def get_target_date():
-    """
-    내일 날짜 KST 기준 반환.
-    금요일 실행 → 월요일 메뉴 반환 (주말 건너뜀)
-    """
-    now = datetime.now(KST)
-    tomorrow = now + timedelta(days=1)
-    if tomorrow.weekday() == 5:    # 토요일 → 월요일
-        tomorrow += timedelta(days=2)
-    elif tomorrow.weekday() == 6:  # 일요일 → 월요일
-        tomorrow += timedelta(days=1)
-    return tomorrow
+def fetch_score_card(gserial, ccid):
+    params = {"gserial": gserial, "game_id": "0", "iindex": "0", "ccid": ccid}
+    r = session.get(SCORE_URL, params=params, timeout=15)
+    return r.json() if r.status_code == 200 else None
 
+def calc_sinperio(diff_list):
+    return sum(diff_list[i] for i in SINPERIO_INCLUDED) * 1.5
 
-def click_lunch_link(driver, target_date):
-    """
-    확인된 달력 구조:
-      <td>
-        14                          ← td 직접 텍스트에 날짜 숫자
-        <ul>
-          <li>
-            <a href="javascript:void(0);"
-               onclick="fnDetail('3160371', this);"
-               title="클릭하면 내용을 보실 수 있습니다.">점심</a>
-          </li>
-        </ul>
-      </td>
-
-    전략: td 중 직접 텍스트(날짜 숫자)가 일치하는 것을 찾고,
-          그 안의 "점심" 링크를 클릭.
-    """
-    day = str(target_date.day)
-    print(f"달력에서 {day}일 '점심' 링크 탐색...")
-
-    try:
-        # td 전체 순회 → 날짜 숫자 텍스트 매칭 → 점심 링크 클릭
-        # XPath: td 안의 직접 텍스트(normalize)가 day와 같고, 하위에 "점심" a 태그가 있는 것
-        xpath = (
-            f'//td['
-            f'normalize-space(text())="{day}" '
-            f'and .//a[normalize-space(text())="점심"]'
-            f']//a[normalize-space(text())="점심"]'
-        )
-        lunch_link = driver.find_element(By.XPATH, xpath)
-        driver.execute_script("arguments[0].click();", lunch_link)
-        print(f"✅ {day}일 점심 클릭 성공")
-        time.sleep(2)
-        return True
-    except Exception as e:
-        print(f"XPath 탐색 실패: {e}")
+def check_mulligan_value(val):
+    if val is None:
         return False
+    numbers = re.findall(r'\d+', str(val).strip())
+    return sum(int(n) for n in numbers) > 0 if numbers else False
 
+def backcount_key(rec):
+    return (rec["score"], *rec["diffs"][::-1])
 
-def parse_meal(driver):
-    """
-    확인된 HTML 구조:
-      메뉴:  <td class="ta_l">보리밥 경상도소고기국 ...</td>
-      이미지: <img src="/dggb/module/file/selectImageView.do?atchFileId=...&fileSn=0" alt="식단">
-    """
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
+def best_record(records):
+    return min(records, key=backcount_key)
 
-    # ── 메뉴 텍스트 ──
-    menu_text = ""
-    tds = soup.select('td.ta_l')
-    if tds:
-        td = max(tds, key=lambda x: len(x.get_text(strip=True)))
-        menu_text = td.get_text(' ', strip=True)
-        print(f"메뉴: {menu_text[:100]}")
-    else:
-        print("⚠️ td.ta_l 없음 — 메뉴 파싱 실패")
+def get_top(table, top_n=12):
+    candidates = [(p, best_record(recs)) for p, recs in table.items()]
+    ranked = sorted(candidates, key=lambda x: backcount_key(x[1]))[:top_n]
+    return [{"rank": r, "name": p} for r, (p, _) in enumerate(ranked, 1)]
 
-    # ── 이미지 URL ──
-    image_url = None
-    img = soup.select_one('img[alt="식단"]')
-    if img:
-        src = img.get('src', '')
-        image_url = src if src.startswith('http') else f"https://oksu.sen.es.kr{src}"
-        print(f"이미지: {image_url}")
-    else:
-        for img in soup.find_all('img'):
-            src = img.get('src', '')
-            if 'atchFileId' in src:
-                image_url = src if src.startswith('http') else f"https://oksu.sen.es.kr{src}"
-                print(f"이미지(백업): {image_url}")
+def get_most_played(counter, top_n=10):
+    return [{"rank": r, "name": p, "count": c}
+            for r, (p, c) in enumerate(counter.most_common(top_n), 1)]
+
+# ---------------------------
+# 수집
+# ---------------------------
+assert login(), "로그인 실패"
+
+resp = session.get(
+    BASE_URL,
+    params={"menuId": "57", "parentId": "33", "time_start1": START_DATE},
+    headers=HEADERS
+)
+resp.raise_for_status()
+
+total_pages = get_total_pages(resp.text)
+all_rounds = []
+
+for page in range(1, total_pages + 1):
+    page_html = resp.text if page == 1 else session.get(
+        BASE_URL,
+        params={"menuId": "57", "parentId": "33",
+                "time_start1": START_DATE, "pageIndex": page},
+        headers=HEADERS
+    ).text
+    rows = re.findall(r"<tr.*?>(.*?)</tr>", page_html, re.DOTALL)
+    for row in rows:
+        date_match = re.search(r"([0-9]{4}-[0-9]{2}-[0-9]{2})", row)
+        game_match = re.search(
+            r"go_scoreCardPp_stat\('0',\s*'([^']+)'\s*,\s*'0',\s*'([^']+)'\s*\);", row
+        )
+        if date_match and game_match:
+            all_rounds.append((game_match.group(1), game_match.group(2), date_match.group(1)))
+
+# ---------------------------
+# 집계
+# ---------------------------
+par_cache = {}
+general_scores  = {"M": defaultdict(list), "F": defaultdict(list)}
+handicap_scores = {"M": defaultdict(list), "F": defaultdict(list)}
+play_counts     = {"M": Counter(), "F": Counter()}
+valid_rounds    = 0
+
+for gserial, ccid, game_date in all_rounds:
+    data = fetch_score_card(gserial, ccid)
+    if not data:
+        continue
+
+    members = data.get("GamePlayerMember", {})
+    if not members or members.get("cc", "").strip() != TARGET_COURSE:
+        continue
+
+    score_list_all = data.get("GameInfoListScoreList", [])
+    if len(score_list_all) < 9:
+        continue
+    holes = score_list_all[:9]
+
+    if ccid not in par_cache:
+        hole_info = data.get("GameInfoListCCHoleInfo", [{}])[0]
+        par_cache[ccid] = [int(hole_info.get(f"par{str(h).zfill(2)}", 0)) for h in range(1, 10)]
+
+    par_list = par_cache[ccid]
+    valid_flag = False
+
+    for i in range(1, 5):
+        player_name = members.get(f"player{i}", "").strip()
+        if not player_name:
+            continue
+
+        clean_name = re.sub(r'\(.*?\)', '', player_name).strip()
+        if clean_name in EXCLUDED_PLAYERS:
+            continue
+
+        is_mulligan = check_mulligan_value(members.get(f"mulligan{i}", "0"))
+        if not is_mulligan:
+            for hole in holes:
+                if check_mulligan_value(hole.get(f"mul_cnt{i}", "0")) or \
+                   check_mulligan_value(hole.get(f"mulligan{i}", "0")):
+                    is_mulligan = True
+                    break
+        if is_mulligan:
+            continue
+
+        diffs, invalid_flag = [], False
+        for hole_idx, score_obj in enumerate(holes):
+            shot_val = score_obj.get(f"shot{i}", "-")
+            if isinstance(shot_val, str):
+                shot_val = shot_val.strip()
+            if shot_val in ("-", "", "&nbsp;", None):
+                invalid_flag = True
+                break
+            try:
+                diffs.append(int(shot_val) - par_list[hole_idx])
+            except (ValueError, TypeError):
+                invalid_flag = True
                 break
 
-    return menu_text, image_url
+        if invalid_flag or len(diffs) < 9:
+            continue
 
+        total_diff = sum(diffs)
+        if total_diff == -36:
+            continue
 
-def format_menu(menu_text):
-    """'보리밥 소고기국 ...' → 줄바꿈 bullet 형태"""
-    items = [item.strip() for item in menu_text.split() if item.strip()]
-    return '\n'.join(f"• {item}" for item in items)
+        sex = "F" if clean_name in FEMALE_PLAYERS else "M"
+        rec = {"score": float(total_diff), "diffs": diffs}
 
-
-def main():
-    target = get_target_date()
-    weekday_names = ['월', '화', '수', '목', '금', '토', '일']
-    date_str = f"{target.month}월 {target.day}일({weekday_names[target.weekday()]})"
-
-    print(f"=== 옥수초 급식 알림 ===")
-    print(f"대상 날짜: {date_str}")
-
-    driver = setup_driver()
-    try:
-        print("급식 사이트 접속...")
-        driver.get(MEAL_URL)
-        time.sleep(3)
-
-        clicked = click_lunch_link(driver, target)
-        if not clicked:
-            print("⚠️ 클릭 실패 — 현재 페이지 그대로 파싱 시도")
-
-        menu_text, image_url = parse_meal(driver)
-    finally:
-        driver.quit()
-
-    if not menu_text:
-        send_telegram_message(
-            f"🍱 <b>옥수초 {date_str} 급식</b>\n\n"
-            f"❌ 메뉴 정보를 가져오지 못했어요.\n"
-            f"🔗 직접 확인: {MEAL_URL}"
+        general_scores[sex][clean_name].append(rec)
+        handicap_scores[sex][clean_name].append(
+            {"score": total_diff - calc_sinperio(diffs), "diffs": diffs}
         )
-        return
+        play_counts[sex][clean_name] += 1
+        valid_flag = True
 
-    caption = (
-        f"🍱 <b>내일({date_str}) 점심 급식</b>\n\n"
-        f"{format_menu(menu_text)}\n\n"
-        f"🏫 옥수초등학교"
-    )
+    if valid_flag:
+        valid_rounds += 1
 
-    if image_url:
-        send_telegram_photo(image_url, caption)
-    else:
-        send_telegram_message(caption)
+# ---------------------------
+# JSON 저장
+# ---------------------------
+result = {
+    "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    "course": TARGET_COURSE,
+    "valid_rounds": valid_rounds,
+    "unique_players": len(play_counts["M"]) + len(play_counts["F"]),
+    "general_M":   get_top(general_scores["M"]),
+    "general_F":   get_top(general_scores["F"]),
+    "handicap_M":  get_top(handicap_scores["M"]),
+    "handicap_F":  get_top(handicap_scores["F"]),
+    "played_M":    get_most_played(play_counts["M"]),
+    "played_F":    get_most_played(play_counts["F"]),
+}
 
-    print("✅ 전송 완료!")
+with open("data.json", "w", encoding="utf-8") as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
 
-
-if __name__ == "__main__":
-    main()
+print(f"완료: {result['updated_at']} / {valid_rounds}라운드 / {result['unique_players']}명")
