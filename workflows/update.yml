@@ -30,29 +30,33 @@ jobs:
       - name: Generate HTML
         run: python generate_html.py
 
+      - name: Check generated files
+        run: |
+          echo "=== 현재 디렉토리 ==="
+          ls -la
+          echo "=== index.html 존재 여부 ==="
+          test -f index.html && echo "✅ index.html 존재" || echo "❌ index.html 없음"
+          echo "=== data.json 존재 여부 ==="
+          test -f data.json && echo "✅ data.json 존재" || echo "❌ data.json 없음"
+
       - name: Deploy to gh-pages
         run: |
-          # 생성된 파일 임시 보관
           mkdir -p /tmp/deploy
           cp index.html /tmp/deploy/index.html
 
-          # gh-pages 브랜치 설정
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
           git fetch origin
 
-          # orphan 브랜치로 깨끗하게 시작
           git checkout --orphan gh-pages-new
           git rm -rf .
 
-          # 파일 복원
           cp /tmp/deploy/index.html ./index.html
 
           git add index.html
-          git commit -m "Update ranking $(date '+%Y-%m-%d %H:%M KST')"
-
-          # 강제 push로 gh-pages 교체
+          git status
+          git commit -m "Update ranking $(date '+%Y-%m-%d %H:%M')"
           git push origin gh-pages-new:gh-pages --force
 
           echo "✅ 배포 완료"
