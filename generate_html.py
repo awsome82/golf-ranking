@@ -7,14 +7,36 @@ with open("data.json", encoding="utf-8") as f:
     d = json.load(f)
 
 # ── 아래 두 값만 본인 것으로 교체 ──────────────────────
-GITHUB_OWNER = "awsome82"   # 예: lyongii
+GITHUB_OWNER = "YOUR_GITHUB_USERNAME"
 GITHUB_REPO  = "golf-ranking"
-GITHUB_PAT   = "YOUR_PAT_TOKEN"         # ghp_xxxx...
+GITHUB_PAT   = "YOUR_PAT_TOKEN"
 # ───────────────────────────────────────────────────────
 
 MEDAL = {1: "🥇", 2: "🥈", 3: "🥉"}
 
-def rows(items, show_count=False):
+def fmt_score(sc):
+    if abs(sc - round(sc)) < 1e-6:
+        return f"({int(round(sc)):+d})"
+    return f"({sc:+.2f})"
+
+def rows_general(items):
+    """일반스코어용 — 이름 + 스코어 표시"""
+    html = ""
+    for item in items:
+        r     = item["rank"]
+        name  = item["name"]
+        score = fmt_score(item["score"])
+        medal = MEDAL.get(r, f'<span class="rank-num">{r}</span>')
+        html += f"""
+        <tr>
+          <td class="rank-cell">{medal}</td>
+          <td class="name-cell">{name}</td>
+          <td class="score-cell">{score}</td>
+        </tr>"""
+    return html
+
+def rows_simple(items, show_count=False):
+    """핸디캡·최다플레이용 — 이름만 (또는 이름+횟수)"""
     html = ""
     for item in items:
         r     = item["rank"]
@@ -29,12 +51,21 @@ def rows(items, show_count=False):
         </tr>"""
     return html
 
+def table_card_general(title, items):
+    return f"""
+    <div class="card">
+      <div class="card-title">{title}</div>
+      <table>
+        <tbody>{rows_general(items)}</tbody>
+      </table>
+    </div>"""
+
 def table_card(title, items, show_count=False):
     return f"""
     <div class="card">
       <div class="card-title">{title}</div>
       <table>
-        <tbody>{rows(items, show_count)}</tbody>
+        <tbody>{rows_simple(items, show_count)}</tbody>
       </table>
     </div>"""
 
@@ -181,6 +212,13 @@ html = f"""<!DOCTYPE html>
     color: #666;
   }}
   .name-cell {{ font-weight: 600; }}
+  .score-cell {{
+    text-align: right;
+    font-size: 0.82rem;
+    color: #1a7f4b;
+    font-weight: 600;
+    white-space: nowrap;
+  }}
   .count {{ font-size: 0.78rem; color: #888; }}
   tr:not(:last-child) td {{ border-bottom: 1px solid #f5f5f5; }}
   .stats {{
@@ -229,8 +267,8 @@ html = f"""<!DOCTYPE html>
 
 <div id="general" class="section">
   <div class="grid">
-    {table_card("🏌️ 남자 일반스코어 TOP12", d['general_M'])}
-    {table_card("🏌️‍♀️ 여자 일반스코어 TOP12", d['general_F'])}
+    {table_card_general("🏌️ 남자 일반스코어 TOP12", d['general_M'])}
+    {table_card_general("🏌️‍♀️ 여자 일반스코어 TOP12", d['general_F'])}
   </div>
 </div>
 
@@ -273,7 +311,6 @@ html = f"""<!DOCTYPE html>
   async function triggerUpdate() {{
     const btn  = document.getElementById('update-btn');
     const icon = document.getElementById('btn-icon');
-
     btn.disabled = true;
     icon.outerHTML = '<span class="spinner" id="btn-icon"></span>';
     toast("⏳ 업데이트 요청 중...", 2000);
@@ -307,10 +344,9 @@ html = f"""<!DOCTYPE html>
   }}
 
   function resetBtn() {{
-    const btn = document.getElementById('update-btn');
     const icon = document.getElementById('btn-icon');
     if (icon) icon.outerHTML = '<span id="btn-icon">🔄</span>';
-    btn.disabled = false;
+    document.getElementById('update-btn').disabled = false;
   }}
 </script>
 </body>
