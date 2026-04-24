@@ -80,6 +80,33 @@ def get_most_played(counter, top_n=10):
     return [{"rank": r, "name": p, "count": c}
             for r, (p, c) in enumerate(counter.most_common(top_n), 1)]
 
+def is_valid_round(diffs: list[int], par_list: list[int]) -> tuple[bool, str]:
+    """
+    라운드 유효성 검증.
+    Returns (True, "") if valid, (False, reason) if invalid.
+    """
+    # 1. 실제 타수가 0인 홀 존재 여부 (shot = 0 → diff = -par)
+    #    par3=-3, par4=-4, par5=-5 이면 실제 0타 → 미기록
+    for i, (d, p) in enumerate(zip(diffs, par_list)):
+        actual_shot = d + p
+        if actual_shot <= 0:
+            return False, f"홀{i+1} 실제타수={actual_shot} (미기록 의심)"
+
+    # 4. 총타수 범위 체크 (9홀 기준 현실적 범위: -9 ~ +27)
+    total = sum(diffs)
+    if total < -9:
+        return False, f"총편차={total} (너무 낮음)"
+    if total > 27:
+        return False, f"총편차={total} (너무 높음)"
+
+    # 5. 실제 타수 최솟값 체크 (홀당 최소 1타)
+    for i, (d, p) in enumerate(zip(diffs, par_list)):
+        actual_shot = d + p
+        if actual_shot < 1:
+            return False, f"홀{i+1} 실제타수={actual_shot} < 1"
+
+    return True, ""
+
 # ---------------------------
 # 수집
 # ---------------------------
@@ -162,7 +189,7 @@ for gserial, ccid, game_date in all_rounds:
                     break
         if is_mulligan:
             continue
-
+    
         diffs, invalid_flag = [], False
         for hole_idx, score_obj in enumerate(holes):
             shot_val = score_obj.get(f"shot{i}", "-")
@@ -183,7 +210,12 @@ for gserial, ccid, game_date in all_rounds:
         total_diff = sum(diffs)
         if total_diff == -36:
             continue
-
+        # ── 추가: 라운드 유효성 검증 ──────────────────────────
+        valid, reason = is_valid_round(diffs, par_list)
+        if not valid:
+            print(f"  ⚠️ 제외 [{clean_name}] {game_date}: {reason}")
+            continue
+        # ───────────────────────────────────────────────────────
         sex = "F" if clean_name in FEMALE_PLAYERS else "M"
         rec = {"score": float(total_diff), "diffs": diffs}
 
