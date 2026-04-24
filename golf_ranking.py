@@ -4,8 +4,10 @@ import os
 import json
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict, Counter
-
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 KST = timezone(timedelta(hours=9))
+import time
 
 TARGET_COURSE = "베어리버 리버"
 START_DATE    = "2026-04-08"
@@ -32,7 +34,7 @@ session = requests.Session()
 
 def login():
     data = {"retUrl": "/main", "userId": USER_ID, "passwd": PASSWORD}
-    r = session.post(LOGIN_URL, data=data, headers=HEADERS, timeout=15)
+    r = session.post(LOGIN_URL, data=data, headers=HEADERS, timeout=15, verify=False)
     return r.status_code == 200 and "isLogin = true" in r.text
 
 def get_total_pages(html):
@@ -41,8 +43,17 @@ def get_total_pages(html):
 
 def fetch_score_card(gserial, ccid):
     params = {"gserial": gserial, "game_id": "0", "iindex": "0", "ccid": ccid}
-    r = session.get(SCORE_URL, params=params, timeout=15)
-    return r.json() if r.status_code == 200 else None
+    for attempt in range(3):   # 최대 3회 재시도
+        try:
+            r = session.get(SCORE_URL, params=params, timeout=20, verify=False)
+            return r.json() if r.status_code == 200 else None
+        except Exception as e:
+            if attempt == 2:
+                print(f"  ⚠️ 스킵 ({gserial}): {e}")
+                return None
+            time.sleep(2)
+    return None
+
 
 def calc_sinperio(diff_list):
     return sum(diff_list[i] for i in SINPERIO_INCLUDED) * 1.5
@@ -78,6 +89,8 @@ resp = session.get(
     BASE_URL,
     params={"menuId": "57", "parentId": "33", "time_start1": START_DATE},
     headers=HEADERS
+    verify=False        # ← 추가
+
 )
 resp.raise_for_status()
 
@@ -90,6 +103,7 @@ for page in range(1, total_pages + 1):
         params={"menuId": "57", "parentId": "33",
                 "time_start1": START_DATE, "pageIndex": page},
         headers=HEADERS
+        verify=False        # ← 추가
     ).text
     rows = re.findall(r"<tr.*?>(.*?)</tr>", page_html, re.DOTALL)
     for row in rows:
