@@ -1,8 +1,8 @@
 name: Update Golf Ranking
 
 on:
-  schedule:
-    - cron: '0 13 * * *'
+  #schedule:
+   # - cron: '0 13 * * *'
   workflow_dispatch:
   repository_dispatch:
     types: [trigger-update]   # 웹페이지 버튼에서 호출
