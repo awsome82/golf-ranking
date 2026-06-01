@@ -1,358 +1,96 @@
 import json
-from datetime import datetime, timezone, timedelta
-
-KST = timezone(timedelta(hours=9))
 
 with open("data.json", encoding="utf-8") as f:
     d = json.load(f)
 
-# ── 아래 두 값만 본인 것으로 교체 ──────────────────────
-GITHUB_OWNER = "YOUR_GITHUB_USERNAME"
-GITHUB_REPO  = "golf-ranking"
-GITHUB_PAT   = "YOUR_PAT_TOKEN"
-# ───────────────────────────────────────────────────────
-
-MEDAL = {1: "🥇", 2: "🥈", 3: "🥉"}
-
-def fmt_score(sc):
-    if abs(sc - round(sc)) < 1e-6:
-        return f"({int(round(sc)):+d})"
-    return f"({sc:+.2f})"
-
-def rows_general(items):
-    """일반스코어용 — 이름 + 스코어 표시"""
+def render_table(items):
+    if not items: return "<tr><td colspan='3' style='text-align:center; padding:20px; color:#999;'>기록이 없습니다.</td></tr>"
     html = ""
     for item in items:
-        r     = item["rank"]
-        name  = item["name"]
-        score = fmt_score(item["score"])
-        medal = MEDAL.get(r, f'<span class="rank-num">{r}</span>')
+        medal = {1:"🥇", 2:"🥈", 3:"🥉"}.get(item['rank'], f"<span class='rank-num'>{item['rank']}</span>")
+        score_style = "color:red; font-weight:bold;" if item['score'] < 0 else "color:#1a7f4b;"
         html += f"""
         <tr>
-          <td class="rank-cell">{medal}</td>
-          <td class="name-cell">{name}</td>
-          <td class="score-cell">{score}</td>
+            <td class="rank-cell">{medal}</td>
+            <td class="name-cell">{item['name']}<br><small style='color:#888; font-weight:normal;'>{item['course']}</small></td>
+            <td class="score-cell" style="{score_style}">{item['score']:+d}</td>
         </tr>"""
     return html
-
-def rows_simple(items, show_count=False):
-    """핸디캡·최다플레이용 — 이름만 (또는 이름+횟수)"""
-    html = ""
-    for item in items:
-        r     = item["rank"]
-        name  = item["name"]
-        medal = MEDAL.get(r, f'<span class="rank-num">{r}</span>')
-        extra = f'<span class="count">{item["count"]}회</span>' if show_count else ""
-        html += f"""
-        <tr>
-          <td class="rank-cell">{medal}</td>
-          <td class="name-cell">{name}</td>
-          <td>{extra}</td>
-        </tr>"""
-    return html
-
-def table_card_general(title, items):
-    return f"""
-    <div class="card">
-      <div class="card-title">{title}</div>
-      <table>
-        <tbody>{rows_general(items)}</tbody>
-      </table>
-    </div>"""
-
-def table_card(title, items, show_count=False):
-    return f"""
-    <div class="card">
-      <div class="card-title">{title}</div>
-      <table>
-        <tbody>{rows_simple(items, show_count)}</tbody>
-      </table>
-    </div>"""
 
 html = f"""<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#1a7f4b">
-<title>⛳ {d['course']} 랭킹</title>
+<title>⛳ 골프 통합 TOP 5 랭킹</title>
 <style>
-  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #f0f4f0;
-    color: #1a1a1a;
-    padding-bottom: 2rem;
-  }}
-  header {{
-    background: linear-gradient(135deg, #1a7f4b, #2ecc71);
-    color: white;
-    padding: 1.2rem 1rem 0.8rem;
-    text-align: center;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-  }}
-  header h1 {{ font-size: 1.2rem; font-weight: 700; }}
-  .header-sub {{
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.6rem;
-    margin-top: 0.35rem;
-    flex-wrap: wrap;
-  }}
-  .header-sub p {{ font-size: 0.78rem; opacity: 0.9; }}
-  #update-btn {{
-    background: rgba(255,255,255,0.25);
-    border: 1px solid rgba(255,255,255,0.6);
-    color: white;
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 0.25rem 0.7rem;
-    border-radius: 20px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    transition: background 0.2s;
-    white-space: nowrap;
-  }}
-  #update-btn:hover {{ background: rgba(255,255,255,0.35); }}
-  #update-btn:disabled {{ opacity: 0.5; cursor: not-allowed; }}
-  .spinner {{
-    display: inline-block;
-    width: 12px; height: 12px;
-    border: 2px solid rgba(255,255,255,0.4);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }}
-  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-  #toast {{
-    position: fixed;
-    bottom: 1.5rem;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #333;
-    color: #fff;
-    padding: 0.55rem 1.2rem;
-    border-radius: 20px;
-    font-size: 0.82rem;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s;
-    z-index: 999;
-    white-space: nowrap;
-  }}
-  #toast.show {{ opacity: 1; }}
-  .tabs {{
-    display: flex;
-    background: #fff;
-    border-bottom: 2px solid #e0e0e0;
-    position: sticky;
-    top: 70px;
-    z-index: 99;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }}
-  .tabs::-webkit-scrollbar {{ display: none; }}
-  .tab {{
-    flex: 1;
-    min-width: 80px;
-    padding: 0.7rem 0.5rem;
-    text-align: center;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: #888;
-    cursor: pointer;
-    border-bottom: 3px solid transparent;
-    white-space: nowrap;
-    transition: all 0.2s;
-  }}
-  .tab.active {{ color: #1a7f4b; border-bottom-color: #1a7f4b; }}
-  .section {{ display: none; padding: 0.8rem; }}
-  .section.active {{ display: block; }}
-  .grid {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.7rem;
-  }}
-  .card {{
-    background: #fff;
-    border-radius: 14px;
-    padding: 0.9rem 0.8rem;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-  }}
-  .card-title {{
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: #1a7f4b;
-    margin-bottom: 0.6rem;
-    padding-bottom: 0.4rem;
-    border-bottom: 1px solid #e8f5e9;
-  }}
-  table {{ width: 100%; border-collapse: collapse; }}
-  td {{
-    padding: 0.35rem 0.2rem;
-    font-size: 0.88rem;
-    vertical-align: middle;
-  }}
-  .rank-cell {{ width: 28px; text-align: center; }}
-  .rank-num {{
-    display: inline-block;
-    width: 20px; height: 20px;
-    background: #f0f0f0;
-    border-radius: 50%;
-    font-size: 0.72rem;
-    font-weight: 700;
-    line-height: 20px;
-    text-align: center;
-    color: #666;
-  }}
-  .name-cell {{ font-weight: 600; }}
-  .score-cell {{
-    text-align: right;
-    font-size: 0.82rem;
-    color: #1a7f4b;
-    font-weight: 600;
-    white-space: nowrap;
-  }}
-  .count {{ font-size: 0.78rem; color: #888; }}
-  tr:not(:last-child) td {{ border-bottom: 1px solid #f5f5f5; }}
-  .stats {{
-    display: flex;
-    gap: 0.7rem;
-    margin-bottom: 0.8rem;
-  }}
-  .stat-box {{
-    flex: 1;
-    background: #fff;
-    border-radius: 12px;
-    padding: 0.7rem;
-    text-align: center;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-  }}
-  .stat-val {{ font-size: 1.4rem; font-weight: 700; color: #1a7f4b; }}
-  .stat-lbl {{ font-size: 0.72rem; color: #888; margin-top: 0.1rem; }}
+    body {{ font-family: -apple-system, sans-serif; background: #f0f4f0; margin: 0; padding-bottom: 50px; }}
+    header {{ background: linear-gradient(135deg, #1a7f4b, #2ecc71); color: white; padding: 20px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+    .tabs {{ display: flex; background: white; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid #ddd; }}
+    .tab {{ flex: 1; padding: 15px; text-align: center; font-weight: bold; color: #888; cursor: pointer; }}
+    .tab.active {{ color: #1a7f4b; border-bottom: 3px solid #1a7f4b; }}
+    .section {{ display: none; padding: 15px; }}
+    .section.active {{ display: block; }}
+    .grid {{ display: grid; grid-template-columns: 1fr; gap: 15px; }}
+    @media (min-width: 768px) {{ .grid {{ grid-template-columns: 1fr 1fr; }} }}
+    .card {{ background: white; border-radius: 12px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }}
+    .card-title {{ font-weight: bold; color: #1a7f4b; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }}
+    table {{ width: 100%; border-collapse: collapse; }}
+    td {{ padding: 10px 5px; border-bottom: 1px solid #f9f9f9; }}
+    .rank-cell {{ width: 40px; text-align: center; }}
+    .name-cell {{ font-weight: 600; line-height: 1.2; }}
+    .score-cell {{ text-align: right; width: 60px; }}
+    .rank-num {{ background: #eee; border-radius: 50%; width: 24px; height: 24px; display: inline-block; line-height: 24px; font-size: 12px; }}
 </style>
 </head>
 <body>
 
 <header>
-  <h1>⛳ {d['course']} 랭킹</h1>
-  <div class="header-sub">
-    <p>업데이트: {d['updated_at']} &nbsp;|&nbsp; {d['valid_rounds']}라운드 · {d['unique_players']}명</p>
-    <button id="update-btn" onclick="triggerUpdate()">
-      <span id="btn-icon">🔄</span> 업데이트
-    </button>
-  </div>
+    <h1 style="margin:0; font-size:1.5rem;">⛳ 통합 베스트 스코어</h1>
+    <p style="margin:5px 0 0; font-size:0.8rem; opacity:0.8;">업데이트: {d['updated_at']}</p>
 </header>
 
-<div id="toast"></div>
-
 <div class="tabs">
-  <div class="tab active" onclick="show('handicap', this)">핸디캡</div>
-  <div class="tab"        onclick="show('general',  this)">일반스코어</div>
-  <div class="tab"        onclick="show('played',   this)">최다플레이</div>
+    <div class="tab active" onclick="show('weekly', this)">주간 TOP 5</div>
+    <div class="tab" onclick="show('monthly', this)">월간 TOP 5</div>
 </div>
 
-<div id="handicap" class="section active">
-  <div class="grid">
-    {table_card("🏌️ 남자 핸디캡 TOP12", d['handicap_M'])}
-    {table_card("🏌️‍♀️ 여자 핸디캡 TOP12", d['handicap_F'])}
-  </div>
-</div>
-
-<div id="general" class="section">
-  <div class="grid">
-    {table_card_general("🏌️ 남자 일반스코어 TOP12", d['general_M'])}
-    {table_card_general("🏌️‍♀️ 여자 일반스코어 TOP12", d['general_F'])}
-  </div>
-</div>
-
-<div id="played" class="section">
-  <div class="stats">
-    <div class="stat-box">
-      <div class="stat-val">{d['valid_rounds']}</div>
-      <div class="stat-lbl">총 라운드</div>
+<div id="weekly" class="section active">
+    <div class="grid">
+        <div class="card">
+            <div class="card-title">♂️ 남자 주간 베스트</div>
+            <table>{render_table(d['weekly']['M'])}</table>
+        </div>
+        <div class="card">
+            <div class="card-title">♀️ 여자 주간 베스트</div>
+            <table>{render_table(d['weekly']['F'])}</table>
+        </div>
     </div>
-    <div class="stat-box">
-      <div class="stat-val">{d['unique_players']}</div>
-      <div class="stat-lbl">참여 인원</div>
+</div>
+
+<div id="monthly" class="section">
+    <div class="grid">
+        <div class="card">
+            <div class="card-title">♂️ 남자 월간 베스트</div>
+            <table>{render_table(d['monthly']['M'])}</table>
+        </div>
+        <div class="card">
+            <div class="card-title">♀️ 여자 월간 베스트</div>
+            <table>{render_table(d['monthly']['F'])}</table>
+        </div>
     </div>
-  </div>
-  <div class="grid">
-    {table_card("🏌️ 남자 최다플레이 TOP10", d['played_M'], show_count=True)}
-    {table_card("🏌️‍♀️ 여자 최다플레이 TOP10", d['played_F'], show_count=True)}
-  </div>
 </div>
 
 <script>
-  const GITHUB_OWNER = "{GITHUB_OWNER}";
-  const GITHUB_REPO  = "{GITHUB_REPO}";
-  const GITHUB_PAT   = "{GITHUB_PAT}";
-
-  function show(id, el) {{
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    el.classList.add('active');
-  }}
-
-  function toast(msg, duration=3500) {{
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), duration);
-  }}
-
-  async function triggerUpdate() {{
-    const btn  = document.getElementById('update-btn');
-    const icon = document.getElementById('btn-icon');
-    btn.disabled = true;
-    icon.outerHTML = '<span class="spinner" id="btn-icon"></span>';
-    toast("⏳ 업데이트 요청 중...", 2000);
-
-    try {{
-      const res = await fetch(
-        `https://api.github.com/repos/${{GITHUB_OWNER}}/${{GITHUB_REPO}}/dispatches`,
-        {{
-          method: "POST",
-          headers: {{
-            "Authorization": `Bearer ${{GITHUB_PAT}}`,
-            "Accept": "application/vnd.github+json",
-            "Content-Type": "application/json",
-          }},
-          body: JSON.stringify({{ event_type: "trigger-update" }}),
-        }}
-      );
-
-      if (res.status === 204) {{
-        toast("✅ 업데이트 시작! 약 2분 후 새로고침됩니다.");
-        setTimeout(() => location.reload(), 130000);
-      }} else {{
-        const err = await res.json().catch(() => ({{}}));
-        toast("❌ 오류: " + (err.message || res.status));
-        resetBtn();
-      }}
-    }} catch(e) {{
-      toast("❌ 네트워크 오류");
-      resetBtn();
+    function show(id, el) {{
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        el.classList.add('active');
     }}
-  }}
-
-  function resetBtn() {{
-    const icon = document.getElementById('btn-icon');
-    if (icon) icon.outerHTML = '<span id="btn-icon">🔄</span>';
-    document.getElementById('update-btn').disabled = false;
-  }}
 </script>
 </body>
 </html>"""
 
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html)
-
-print("index.html 생성 완료")
