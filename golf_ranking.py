@@ -10,7 +10,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 KST = timezone(timedelta(hours=9))
 
 # 설정
-START_DATE = "2026-01-01"  # 수집 시작일
+START_DATE = "2026-06-01"  # 수집 시작일
 USER_ID = os.environ.get("SG_ID", "")
 PASSWORD = os.environ.get("SG_PW", "")
 
