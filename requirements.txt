@@ -1,1 +1,2 @@
 requests
+pip install requests urllib3 pandas
