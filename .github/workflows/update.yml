@@ -1,11 +1,15 @@
 name: Update Golf Ranking
 
 on:
-  #schedule:
-   # - cron: '0 13 * * *'
+  schedule:
+    - cron: '0 13 * * *'
   workflow_dispatch:
   repository_dispatch:
-    types: [trigger-update]   # 웹페이지 버튼에서 호출
+    types: [trigger-update]
+
+env:
+  # Node.js 24 환경 강제 옵트인 (경고 제거용)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -14,20 +18,25 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      # 최신 v5 버전 사용 (Node 24 지원)
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      # 최신 v6 버전 사용 (Node 24 지원)
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
+      # pandas를 반드시 포함해야 합니다!
       - name: Install dependencies
-        run: pip install requests
-
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
       - name: Run ranking script
         env:
           SG_ID: ${{ secrets.SG_ID }}
           SG_PW: ${{ secrets.SG_PW }}
-        run: python golf_ranking.py
+        # 실행할 파일명이 저장소 내 실제 파일명과 같은지 확인하세요!
+        run: python update_ranking.py 
 
       - name: Generate HTML
         run: python generate_html.py
@@ -35,16 +44,14 @@ jobs:
       - name: Deploy to gh-pages
         run: |
           mkdir -p /tmp/deploy
-          cp index.html /tmp/deploy/index.html
-
+          cp index.html data.json /tmp/deploy/
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git fetch origin
-
-          git checkout --orphan gh-pages-new
+          # 브랜치 처리 로직 안정화
+          git checkout -B gh-pages
           git rm -rf .
-          cp /tmp/deploy/index.html ./index.html
-
-          git add index.html
-          git commit -m "Update ranking $(date '+%Y-%m-%d %H:%M KST')"
-          git push origin gh-pages-new:gh-pages --force
+          cp /tmp/deploy/* .
+          git add .
+          git commit -m "Update ranking $(date '+%Y-%m-%d %H:%M') [skip ci]" || echo "No changes to commit"
+          git push origin gh-pages --force
