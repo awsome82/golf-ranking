@@ -2,8 +2,10 @@ name: Update Golf Ranking
 
 on:
   schedule:
-    - cron: '0 13 * * *'
-  workflow_dispatch:
+    - cron: '0 13 * * *' # 매일 오후 10시 (KST) 자동 실행
+  workflow_dispatch:      # 수동 실행 가능
+  repository_dispatch:    # 웹 버튼(Trigger Update) 연동을 위한 설정
+    types: [trigger-update]
 
 jobs:
   build:
@@ -19,21 +21,21 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests
+        run: |
+          pip install requests urllib3
 
       - name: Run ranking script
         env:
           SG_ID: ${{ secrets.SG_ID }}
           SG_PW: ${{ secrets.SG_PW }}
-        run: python golf_ranking.py
+        # 이전 답변에서 드린 파일명(update_ranking.py)으로 수정했습니다.
+        run: python update_ranking.py
 
       - name: Generate HTML
         run: python generate_html.py
 
       - name: Check generated files
         run: |
-          echo "=== 현재 디렉토리 ==="
-          ls -la
           echo "=== index.html 존재 여부 ==="
           test -f index.html && echo "✅ index.html 존재" || echo "❌ index.html 없음"
           echo "=== data.json 존재 여부 ==="
@@ -41,22 +43,23 @@ jobs:
 
       - name: Deploy to gh-pages
         run: |
+          # 배포를 위해 임시 디렉토리에 파일 복사
           mkdir -p /tmp/deploy
-          cp index.html /tmp/deploy/index.html
+          cp index.html /tmp/deploy/
+          cp data.json /tmp/deploy/  # 데이터 추적을 위해 json도 함께 배포하는 것이 좋습니다.
 
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
           git fetch origin
-
-          git checkout --orphan gh-pages-new
+          # gh-pages 브랜치가 없으면 새로 만들고, 있으면 해당 브랜치로 전환
+          git checkout --orphan gh-pages-new || git checkout -b gh-pages-new
           git rm -rf .
 
-          cp /tmp/deploy/index.html ./index.html
+          cp /tmp/deploy/* .
 
-          git add index.html
-          git status
-          git commit -m "Update ranking $(date '+%Y-%m-%d %H:%M')"
+          git add index.html data.json
+          git commit -m "Update ranking $(date '+%Y-%m-%d %H:%M') [skip ci]"
           git push origin gh-pages-new:gh-pages --force
 
           echo "✅ 배포 완료"
