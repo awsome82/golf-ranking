@@ -53,6 +53,7 @@ def get_rank_data(records, top_n=5):
 # 1. 로그인 및 페이지 탐색
 if not login(): exit("로그인 실패")
 
+
 # 이번 주/이번 달 기준 설정
 now = datetime.now(KST)
 start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
@@ -64,6 +65,8 @@ total_pages_match = re.findall(r'onclick="moveList\((\d+)\);', page_html)
 total_pages = max(map(int, total_pages_match)) if total_pages_match else 1
 
 raw_data = []
+
+print(f"🚀 수집 시작: {START_DATE} 이후의 데이터를 탐색합니다.")
 
 # 2. 데이터 수집 루프
 for page in range(1, total_pages + 1):
@@ -78,45 +81,49 @@ for page in range(1, total_pages + 1):
             if g_date >= start_of_month:
                 raw_data.append((game_match.group(1), game_match.group(2), date_match.group(1), g_date))
 
-# 3. 상세 스코어 파싱 및 분류
-weekly_M, weekly_F = [], []
-monthly_M, monthly_F = [], []
+# 3. 상세 스코어 파싱 (필터 해제 및 로그 강화 버전)
+print(f"🔎 총 {len(raw_data)}개의 라운드 후보가 발견되었습니다.")
 
 for gserial, ccid, date_str, dt_obj in raw_data:
     data = fetch_score_card(gserial, ccid)
-    if not data: continue
+    if not data:
+        print(f"❌ {gserial}: 스코어카드를 불러올 수 없습니다.")
+        continue
     
     members = data.get("GamePlayerMember", {})
     cc_name = members.get("cc", "알 수 없음").strip()
     score_list = data.get("GameInfoListScoreList", [])[:9]
-    if len(score_list) < 9: continue
+    
+    print(f"--- 라운드 분석 ({date_str}, {cc_name}) ---")
 
     for i in range(1, 5):
         name = members.get(f"player{i}", "").strip()
-        if not name or "guest" in name.lower(): continue
+        if not name: continue
         
-        # 멀리건 체크 (제공 코드 로직 활용)
-        if any(str(score_obj.get(f"mul_cnt{i}", "0")) != "0" for score_obj in score_list): continue
+        # [디버깅] 일단 모든 이름을 출력해봅니다.
+        print(f"👤 플레이어 발견: {name}")
 
         try:
+            # 타수 계산
             total_score = sum(int(s.get(f"shot{i}", 0)) for s in score_list)
-            # 파72 기준 편차 (9홀 기준이므로 보통 36점 기준)
-            diff = total_score - 36 
+            diff = total_score - 36 # 9홀 기준
             
             clean_name = re.sub(r'\(.*?\)', '', name).strip()
             gender = "F" if clean_name in FEMALE_PLAYERS else "M"
             
             record = {"name": clean_name, "score": diff, "course": cc_name, "date": date_str}
             
-            # 월간 데이터 추가
-            if gender == "M": monthly_M.append(record)
-            else: monthly_F.append(record)
+            # [필터 해제] 멀리건/게스트 체크 없이 무조건 추가
+            monthly_M.append(record) if gender == "M" else monthly_F.append(record)
             
-            # 주간 데이터 추가
             if dt_obj >= start_of_week:
                 if gender == "M": weekly_M.append(record)
                 else: weekly_F.append(record)
-        except: continue
+            
+            print(f"   ✅ 저장됨: {clean_name} ({diff}타)")
+            
+        except Exception as e:
+            print(f"   ⚠️ {name} 처리 중 에러: {e}")
 
 # 4. 결과 저장 (이 부분이 수정되었습니다)
 final_json = {
