@@ -3,249 +3,127 @@ import re
 import os
 import json
 from datetime import datetime, timezone, timedelta
-from collections import defaultdict, Counter
+from collections import defaultdict
 import urllib3
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 KST = timezone(timedelta(hours=9))
-import time
 
-TARGET_COURSE = "베어리버 리버"
-START_DATE    = "2026-04-08"
-USER_ID       = os.environ.get("SG_ID", "")
-PASSWORD      = os.environ.get("SG_PW", "")
+# 설정
+START_DATE = "2026-01-01"  # 수집 시작일
+USER_ID = os.environ.get("SG_ID", "")
+PASSWORD = os.environ.get("SG_PW", "")
 
-EXCLUDED_PLAYERS = set()
-
+# 여성 플레이어 명단 (제공해주신 리스트 유지)
 FEMALE_PLAYERS = {
     "신영순", "안은영", "제둘림", "박기례", "정순이", "김명희", "이매실", "김현애",
     "김경숙", "강미경", "이미경", "박경희", "황애정", "김은하", "서경숙",
     "안소영", "임혜정", "김진희", "김선희", "김필례", "장해영", "김승혜",
 }
 
-SINPERIO_EXCLUDED = [3, 4, 8]
-SINPERIO_INCLUDED = [i for i in range(9) if i not in SINPERIO_EXCLUDED]
-
-BASE_URL  = "https://smanager.sggolf.com/gameInfo/gameDayState"
 LOGIN_URL = "https://screen.sggolf.com/login/checkProcess"
+BASE_URL = "https://smanager.sggolf.com/gameInfo/gameDayState"
 SCORE_URL = "https://smanager.sggolf.com/gameInfo/popup/scoreCardPp.json"
-HEADERS   = {"User-Agent": "Mozilla/5.0"}
-
 session = requests.Session()
 
 def login():
     data = {"retUrl": "/main", "userId": USER_ID, "passwd": PASSWORD}
-    r = session.post(LOGIN_URL, data=data, headers=HEADERS, timeout=15, verify=False)
-    return r.status_code == 200 and "isLogin = true" in r.text
-
-def get_total_pages(html):
-    nums = re.findall(r'onclick="moveList\((\d+)\);', html)
-    return max(map(int, nums)) if nums else 1
+    r = session.post(LOGIN_URL, data=data, timeout=15, verify=False)
+    return "isLogin = true" in r.text
 
 def fetch_score_card(gserial, ccid):
     params = {"gserial": gserial, "game_id": "0", "iindex": "0", "ccid": ccid}
-    for attempt in range(3):   # 최대 3회 재시도
-        try:
-            r = session.get(SCORE_URL, params=params, timeout=20, verify=False)
-            return r.json() if r.status_code == 200 else None
-        except Exception as e:
-            if attempt == 2:
-                print(f"  ⚠️ 스킵 ({gserial}): {e}")
-                return None
-            time.sleep(2)
-    return None
+    try:
+        r = session.get(SCORE_URL, params=params, timeout=20, verify=False)
+        return r.json() if r.status_code == 200 else None
+    except: return None
 
+def get_rank_data(records, top_n=5):
+    """베스트 스코어 기준 정렬 후 상위 n명 반환"""
+    # 같은 사람이 여러번 쳤을 경우 가장 좋은 스코어 하나만 기록
+    best_per_player = {}
+    for r in records:
+        p = r['name']
+        if p not in best_per_player or r['score'] < best_per_player[p]['score']:
+            best_per_player[p] = r
+    
+    sorted_list = sorted(best_per_player.values(), key=lambda x: (x['score'], x['date']))
+    return [{"rank": i+1, **item} for i, item in enumerate(sorted_list[:top_n])]
 
-def calc_sinperio(diff_list):
-    return sum(diff_list[i] for i in SINPERIO_INCLUDED) * 1.5
+# 1. 로그인 및 페이지 탐색
+if not login(): exit("로그인 실패")
 
-def check_mulligan_value(val):
-    if val is None:
-        return False
-    numbers = re.findall(r'\d+', str(val).strip())
-    return sum(int(n) for n in numbers) > 0 if numbers else False
+# 이번 주/이번 달 기준 설정
+now = datetime.now(KST)
+start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0)
+start_of_month = now.replace(day=1, hour=0, minute=0, second=0)
 
-def backcount_key(rec):
-    return (rec["score"], *rec["diffs"][::-1])
+resp = session.get(BASE_URL, params={"time_start1": START_DATE}, verify=False)
+page_html = resp.text
+total_pages_match = re.findall(r'onclick="moveList\((\d+)\);', page_html)
+total_pages = max(map(int, total_pages_match)) if total_pages_match else 1
 
-def best_record(records):
-    return min(records, key=backcount_key)
+raw_data = []
 
-def get_top(table, top_n=12):
-    candidates = [(p, best_record(recs)) for p, recs in table.items()]
-    ranked = sorted(candidates, key=lambda x: backcount_key(x[1]))[:top_n]
-    return [{"rank": r, "name": p, "score": rec["score"]}
-            for r, (p, rec) in enumerate(ranked, 1)]
-
-def get_most_played(counter, top_n=10):
-    return [{"rank": r, "name": p, "count": c}
-            for r, (p, c) in enumerate(counter.most_common(top_n), 1)]
-
-def is_valid_round(diffs: list[int], par_list: list[int]) -> tuple[bool, str]:
-    """
-    라운드 유효성 검증.
-    Returns (True, "") if valid, (False, reason) if invalid.
-    """
-    # 1. 실제 타수가 0인 홀 존재 여부 (shot = 0 → diff = -par)
-    #    par3=-3, par4=-4, par5=-5 이면 실제 0타 → 미기록
-    for i, (d, p) in enumerate(zip(diffs, par_list)):
-        actual_shot = d + p
-        if actual_shot <= 0:
-            return False, f"홀{i+1} 실제타수={actual_shot} (미기록 의심)"
-
-    # 4. 총타수 범위 체크 (9홀 기준 현실적 범위: -9 ~ +27)
-    total = sum(diffs)
-    if total < -9:
-        return False, f"총편차={total} (너무 낮음)"
-    if total > 27:
-        return False, f"총편차={total} (너무 높음)"
-
-    # 5. 실제 타수 최솟값 체크 (홀당 최소 1타)
-    for i, (d, p) in enumerate(zip(diffs, par_list)):
-        actual_shot = d + p
-        if actual_shot < 1:
-            return False, f"홀{i+1} 실제타수={actual_shot} < 1"
-
-    return True, ""
-
-# ---------------------------
-# 수집
-# ---------------------------
-assert login(), "로그인 실패"
-
-resp = session.get(
-    BASE_URL,
-    params={"menuId": "57", "parentId": "33", "time_start1": START_DATE},
-    headers=HEADERS,
-    verify=False        # ← 추가
-
-)
-resp.raise_for_status()
-
-total_pages = get_total_pages(resp.text)
-all_rounds = []
-
+# 2. 데이터 수집 루프
 for page in range(1, total_pages + 1):
-    page_html = resp.text if page == 1 else session.get(
-        BASE_URL,
-        params={"menuId": "57", "parentId": "33",
-                "time_start1": START_DATE, "pageIndex": page},
-        headers=HEADERS,
-        verify=False        # ← 추가
-    ).text
-    rows = re.findall(r"<tr.*?>(.*?)</tr>", page_html, re.DOTALL)
+    p_html = session.get(BASE_URL, params={"time_start1": START_DATE, "pageIndex": page}, verify=False).text
+    rows = re.findall(r"<tr.*?>(.*?)</tr>", p_html, re.DOTALL)
     for row in rows:
-        date_match = re.search(r"([0-9]{4}-[0-9]{2}-[0-9]{2})", row)
-        game_match = re.search(
-            r"go_scoreCardPp_stat\('0',\s*'([^']+)'\s*,\s*'0',\s*'([^']+)'\s*\);", row
-        )
+        date_match = re.search(r"(\d{4}-\d{2}-\d{2})", row)
+        game_match = re.search(r"go_scoreCardPp_stat\('0',\s*'([^']+)'\s*,\s*'0',\s*'([^']+)'\s*\);", row)
         if date_match and game_match:
-            all_rounds.append((game_match.group(1), game_match.group(2), date_match.group(1)))
+            g_date = datetime.strptime(date_match.group(1), "%Y-%m-%d").replace(tzinfo=KST)
+            # 주간/월간 범위에 드는 데이터만 상세 조회
+            if g_date >= start_of_month:
+                raw_data.append((game_match.group(1), game_match.group(2), date_match.group(1), g_date))
 
-# ---------------------------
-# 집계
-# ---------------------------
-par_cache = {}
-general_scores  = {"M": defaultdict(list), "F": defaultdict(list)}
-handicap_scores = {"M": defaultdict(list), "F": defaultdict(list)}
-play_counts     = {"M": Counter(), "F": Counter()}
-valid_rounds    = 0
+# 3. 상세 스코어 파싱 및 분류
+weekly_M, weekly_F = [], []
+monthly_M, monthly_F = [], []
 
-for gserial, ccid, game_date in all_rounds:
+for gserial, ccid, date_str, dt_obj in raw_data:
     data = fetch_score_card(gserial, ccid)
-    if not data:
-        continue
-
+    if not data: continue
+    
     members = data.get("GamePlayerMember", {})
-    if not members or members.get("cc", "").strip() != TARGET_COURSE:
-        continue
-
-    score_list_all = data.get("GameInfoListScoreList", [])
-    if len(score_list_all) < 9:
-        continue
-    holes = score_list_all[:9]
-
-    if ccid not in par_cache:
-        hole_info = data.get("GameInfoListCCHoleInfo", [{}])[0]
-        par_cache[ccid] = [int(hole_info.get(f"par{str(h).zfill(2)}", 0)) for h in range(1, 10)]
-
-    par_list = par_cache[ccid]
-    valid_flag = False
+    cc_name = members.get("cc", "알 수 없음").strip()
+    score_list = data.get("GameInfoListScoreList", [])[:9]
+    if len(score_list) < 9: continue
 
     for i in range(1, 5):
-        player_name = members.get(f"player{i}", "").strip()
-        if not player_name:
-            continue
+        name = members.get(f"player{i}", "").strip()
+        if not name or "guest" in name.lower(): continue
+        
+        # 멀리건 체크 (제공 코드 로직 활용)
+        if any(str(score_obj.get(f"mul_cnt{i}", "0")) != "0" for score_obj in score_list): continue
 
-        clean_name = re.sub(r'\(.*?\)', '', player_name).strip()
-        if clean_name in EXCLUDED_PLAYERS:
-            continue
+        try:
+            total_score = sum(int(s.get(f"shot{i}", 0)) for s in score_list)
+            # 파72 기준 편차 (9홀 기준이므로 보통 36점 기준)
+            diff = total_score - 36 
+            
+            clean_name = re.sub(r'\(.*?\)', '', name).strip()
+            gender = "F" if clean_name in FEMALE_PLAYERS else "M"
+            
+            record = {"name": clean_name, "score": diff, "course": cc_name, "date": date_str}
+            
+            # 월간 데이터 추가
+            if gender == "M": monthly_M.append(record)
+            else: monthly_F.append(record)
+            
+            # 주간 데이터 추가
+            if dt_obj >= start_of_week:
+                if gender == "M": weekly_M.append(record)
+                else: weekly_F.append(record)
+        except: continue
 
-        is_mulligan = check_mulligan_value(members.get(f"mulligan{i}", "0"))
-        if not is_mulligan:
-            for hole in holes:
-                if check_mulligan_value(hole.get(f"mul_cnt{i}", "0")) or \
-                   check_mulligan_value(hole.get(f"mulligan{i}", "0")):
-                    is_mulligan = True
-                    break
-        if is_mulligan:
-            continue
-    
-        diffs, invalid_flag = [], False
-        for hole_idx, score_obj in enumerate(holes):
-            shot_val = score_obj.get(f"shot{i}", "-")
-            if isinstance(shot_val, str):
-                shot_val = shot_val.strip()
-            if shot_val in ("-", "", "&nbsp;", None):
-                invalid_flag = True
-                break
-            try:
-                diffs.append(int(shot_val) - par_list[hole_idx])
-            except (ValueError, TypeError):
-                invalid_flag = True
-                break
-
-        if invalid_flag or len(diffs) < 9:
-            continue
-
-        total_diff = sum(diffs)
-        if total_diff == -36:
-            continue
-        # ── 추가: 라운드 유효성 검증 ──────────────────────────
-        valid, reason = is_valid_round(diffs, par_list)
-        if not valid:
-            print(f"  ⚠️ 제외 [{clean_name}] {game_date}: {reason}")
-            continue
-        # ───────────────────────────────────────────────────────
-        sex = "F" if clean_name in FEMALE_PLAYERS else "M"
-        rec = {"score": float(total_diff), "diffs": diffs}
-
-        general_scores[sex][clean_name].append(rec)
-        handicap_scores[sex][clean_name].append(
-            {"score": total_diff - calc_sinperio(diffs), "diffs": diffs}
-        )
-        play_counts[sex][clean_name] += 1
-        valid_flag = True
-
-    if valid_flag:
-        valid_rounds += 1
-
-# ---------------------------
-# JSON 저장
-# ---------------------------
-result = {
-    "updated_at": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
-    "course": TARGET_COURSE,
-    "valid_rounds": valid_rounds,
-    "unique_players": len(play_counts["M"]) + len(play_counts["F"]),
-    "general_M":   get_top(general_scores["M"]),
-    "general_F":   get_top(general_scores["F"]),
-    "handicap_M":  get_top(handicap_scores["M"]),
-    "handicap_F":  get_top(handicap_scores["F"]),
-    "played_M":    get_most_played(play_counts["M"]),
-    "played_F":    get_most_played(play_counts["F"]),
+# 4. 결과 저장
+final_json = {
+    "updated_at": now.strftime("%Y-%m-%d %H:%M"),
+    "weekly": { "M": get_rank_data(weekly_M), "F": get_rank_data(weekly_F) },
+    "monthly": { "M": get_rank_data(monthly_M), "F": get_rank_data(monthly_F) }
 }
 
 with open("data.json", "w", encoding="utf-8") as f:
-    json.dump(result, f, ensure_ascii=False, indent=2)
-
-print(f"완료: {result['updated_at']} / {valid_rounds}라운드 / {result['unique_players']}명")
+    json.dump(final_json, f, ensure_ascii=False, indent=2)
