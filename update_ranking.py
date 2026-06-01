@@ -118,9 +118,13 @@ for gserial, ccid, date_str, dt_obj in raw_data:
                 else: weekly_F.append(record)
         except: continue
 
-# 4. 결과 저장
+# 4. 결과 저장 (이 부분이 수정되었습니다)
 final_json = {
     "updated_at": now.strftime("%Y-%m-%d %H:%M"),
+    "period": {
+        "week_start": start_of_week.strftime("%Y-%m-%d"),
+        "month_start": start_of_month.strftime("%Y-%m-%d")
+    },
     "weekly": { "M": get_rank_data(weekly_M), "F": get_rank_data(weekly_F) },
     "monthly": { "M": get_rank_data(monthly_M), "F": get_rank_data(monthly_F) }
 }
