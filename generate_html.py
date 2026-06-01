@@ -7,29 +7,38 @@ except FileNotFoundError:
     print("data.json 파일이 없습니다.")
     exit(1)
 
-# 에러가 발생했던 부분: 데이터가 없으면 기본값(오늘)을 사용하도록 수정
 period = d.get("period", {})
 week_start = period.get("week_start", "2026-01-01")
 month_start = period.get("month_start", "2026-01-01")
 
 def render_table(items):
-    if not items: return "<tr><td colspan='3' style='text-align:center; padding:20px; color:#999;'>기록이 없습니다.</td></tr>"
+    if not items: 
+        return "<tr><td colspan='4' class='empty-row'>기록이 없습니다.</td></tr>"
+    
     html = ""
     for item in items:
-        medal = {1:"🥇", 2:"🥈", 3:"🥉"}.get(item['rank'], f"<span class='rank-num'>{item['rank']}</span>")
-        score_style = "color:red; font-weight:bold;" if item['score'] < 0 else "color:#1a7f4b;"
+        # 순위 메달 설정
+        medal = {1:"🥇", 2:"🥈", 3:"🥉"}.get(item['rank'], f"<span class='rank-badge'>{item['rank']}</span>")
+        
+        # 스코어 색상 클래스 결정
+        sc = item['score']
+        score_class = "score-under" if sc < 0 else ("score-even" if sc == 0 else "score-over")
+        
+        # 날짜 포맷팅 (YYYY-MM-DD -> MM-DD)
+        date_display = item['date'][5:] if len(item['date']) >= 10 else item['date']
+
         html += f"""
         <tr>
-            <td class="rank-cell">{medal}</td>
-            <td class="name-cell">{item['name']}<br><small style='color:#888;'>{item['course']}</small></td>
-            <td class="score-cell" style="{score_style}">{item['score']:+d}</td>
+            <td class="td-rank">{medal}</td>
+            <td class="td-name">
+                <span class="player-name">{item['name']}</span>
+                <span class="player-course">{item['course']}</span>
+            </td>
+            <td class="td-date">{date_display}</td>
+            <td class="td-score {score_class}">{sc:+d}</td>
         </tr>"""
     return html
 
-
-# ─────────────────────────────────────────────────────────────
-# 카드 렌더 (성별 라벨 + 테이블)
-# ─────────────────────────────────────────────────────────────
 def render_card(title: str, icon: str, items: list, card_id: str) -> str:
     return f"""
     <div class="card" id="{card_id}">
@@ -40,10 +49,10 @@ def render_card(title: str, icon: str, items: list, card_id: str) -> str:
       <table>
         <thead>
           <tr>
-            <th style="width:40px"></th>
+            <th style="width:40px; text-align:center;">순위</th>
             <th>이름 / 구장</th>
-            <th style="width:52px">날짜</th>
-            <th style="width:52px">스코어</th>
+            <th style="width:55px">날짜</th>
+            <th style="width:55px; text-align:right;">스코어</th>
           </tr>
         </thead>
         <tbody>
@@ -52,7 +61,7 @@ def render_card(title: str, icon: str, items: list, card_id: str) -> str:
       </table>
     </div>"""
 
-
+# 레이블 설정
 week_label  = d["period"]["week_start"][5:] + " 주"
 month_label = d["period"]["month_start"][:7]
 
@@ -70,9 +79,6 @@ html = f"""<!DOCTYPE html>
       --green-dark:  #1a5c38;
       --green-main:  #217a4b;
       --green-light: #e8f5ee;
-      --gold:        #d4a017;
-      --silver:      #8a9ba8;
-      --bronze:      #b87333;
       --text-primary: #1a1a1a;
       --text-muted:   #6b7280;
       --border:       #e5e7eb;
@@ -86,28 +92,18 @@ html = f"""<!DOCTYPE html>
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--text-primary);
-      min-height: 100vh;
+      line-height: 1.5;
     }}
 
-    /* ── 헤더 ── */
     header {{
       background: linear-gradient(135deg, var(--green-dark) 0%, var(--green-main) 100%);
       color: #fff;
-      padding: 24px 20px 20px;
+      padding: 24px 20px;
       text-align: center;
     }}
-    header h1 {{
-      font-size: 1.45rem;
-      font-weight: 700;
-      letter-spacing: -0.3px;
-    }}
-    .header-sub {{
-      margin-top: 6px;
-      font-size: 0.78rem;
-      opacity: 0.75;
-    }}
+    header h1 {{ font-size: 1.4rem; font-weight: 700; }}
+    .header-sub {{ margin-top: 6px; font-size: 0.75rem; opacity: 0.8; }}
 
-    /* ── 탭 ── */
     .tab-bar {{
       display: flex;
       background: var(--card-bg);
@@ -118,194 +114,194 @@ html = f"""<!DOCTYPE html>
     }}
     .tab-btn {{
       flex: 1;
-      padding: 13px 0;
-      text-align: center;
-      font-size: 0.88rem;
+      padding: 14px 0;
+      font-size: 0.85rem;
       font-weight: 600;
       color: var(--text-muted);
       cursor: pointer;
       border: none;
       background: none;
       border-bottom: 3px solid transparent;
-      transition: color .2s, border-color .2s;
     }}
     .tab-btn.active {{
       color: var(--green-main);
       border-bottom-color: var(--green-main);
     }}
 
-    /* ── 섹션 ── */
     .section {{ display: none; padding: 16px; }}
     .section.active {{ display: block; }}
 
-    /* ── 기간 배지 ── */
     .period-badge {{
       display: inline-block;
       background: var(--green-light);
       color: var(--green-dark);
-      font-size: 0.75rem;
-      font-weight: 600;
+      font-size: 0.7rem;
+      font-weight: 700;
       padding: 4px 10px;
       border-radius: 20px;
       margin-bottom: 12px;
     }}
 
-    /* ── 그리드 ── */
-    .grid {{
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 14px;
-    }}
-    @media (min-width: 720px) {{
-      .grid {{ grid-template-columns: 1fr 1fr; }}
+    .grid {{ display: grid; grid-template-columns: 1fr; gap: 16px; }}
+    @media (min-width: 720px) {{ .grid {{ grid-template-columns: 1fr 1fr; }} }}
+
+    .card {{ background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }}
+    .card-header {{ display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: var(--green-light); border-bottom: 1px solid var(--border); }}
+    .card-title {{ font-size: 0.9rem; font-weight: 700; color: var(--green-dark); }}
+
+    table {{ width: 100%; border-collapse: collapse; }}
+    thead th {{ font-size: 0.65rem; color: var(--text-muted); padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; }}
+    td {{ padding: 10px 12px; border-bottom: 1pximport json
+
+try:
+    with open("data.json", encoding="utf-8") as f:
+        d = json.load(f)
+except FileNotFoundError:
+    print("data.json 파일이 없습니다.")
+    exit(1)
+
+period = d.get("period", {})
+week_start = period.get("week_start", "2026-01-01")
+month_start = period.get("month_start", "2026-01-01")
+
+def render_table(items):
+    if not items: 
+        return "<tr><td colspan='4' class='empty-row'>기록이 없습니다.</td></tr>"
+    
+    html = ""
+    for item in items:
+        # 순위 메달 설정
+        medal = {1:"🥇", 2:"🥈", 3:"🥉"}.get(item['rank'], f"<span class='rank-badge'>{item['rank']}</span>")
+        
+        # 스코어 색상 클래스 결정
+        sc = item['score']
+        score_class = "score-under" if sc < 0 else ("score-even" if sc == 0 else "score-over")
+        
+        # 날짜 포맷팅 (YYYY-MM-DD -> MM-DD)
+        date_display = item['date'][5:] if len(item['date']) >= 10 else item['date']
+
+        html += f"""
+        <tr>
+            <td class="td-rank">{medal}</td>
+            <td class="td-name">
+                <span class="player-name">{item['name']}</span>
+                <span class="player-course">{item['course']}</span>
+            </td>
+            <td class="td-date">{date_display}</td>
+            <td class="td-score {score_class}">{sc:+d}</td>
+        </tr>"""
+    return html
+
+def render_card(title: str, icon: str, items: list, card_id: str) -> str:
+    return f"""
+    <div class="card" id="{card_id}">
+      <div class="card-header">
+        <span class="card-icon">{icon}</span>
+        <span class="card-title">{title}</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:40px; text-align:center;">순위</th>
+            <th>이름 / 구장</th>
+            <th style="width:55px">날짜</th>
+            <th style="width:55px; text-align:right;">스코어</th>
+          </tr>
+        </thead>
+        <tbody>
+          {render_table(items)}
+        </tbody>
+      </table>
+    </div>"""
+
+# 레이블 설정
+week_label  = d["period"]["week_start"][5:] + " 주"
+month_label = d["period"]["month_start"][:7]
+
+html = f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⛳ 베스트 스코어 TOP 5</title>
+  <style>
+    /* ── 기본 리셋 ── */
+    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
+    :root {{
+      --green-dark:  #1a5c38;
+      --green-main:  #217a4b;
+      --green-light: #e8f5ee;
+      --text-primary: #1a1a1a;
+      --text-muted:   #6b7280;
+      --border:       #e5e7eb;
+      --bg:           #f3f7f4;
+      --card-bg:      #ffffff;
+      --radius:       14px;
+      --shadow:       0 2px 12px rgba(0,0,0,0.07);
     }}
 
-    /* ── 카드 ── */
-    .card {{
-      background: var(--card-bg);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow: hidden;
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      line-height: 1.5;
     }}
-    .card-header {{
+
+    header {{
+      background: linear-gradient(135deg, var(--green-dark) 0%, var(--green-main) 100%);
+      color: #fff;
+      padding: 24px 20px;
+      text-align: center;
+    }}
+    header h1 {{ font-size: 1.4rem; font-weight: 700; }}
+    .header-sub {{ margin-top: 6px; font-size: 0.75rem; opacity: 0.8; }}
+
+    .tab-bar {{
       display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 13px 16px;
+      background: var(--card-bg);
       border-bottom: 1px solid var(--border);
-      background: var(--green-light);
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }}
-    .card-icon {{ font-size: 1.1rem; }}
-    .card-title {{
-      font-size: 0.92rem;
-      font-weight: 700;
-      color: var(--green-dark);
-    }}
-
-    /* ── 테이블 ── */
-    table {{
-      width: 100%;
-      border-collapse: collapse;
-    }}
-    thead th {{
-      font-size: 0.7rem;
-      color: var(--text-muted);
-      font-weight: 500;
-      padding: 8px 10px;
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-      text-transform: uppercase;
-      letter-spacing: .4px;
-    }}
-    tbody tr {{
-      transition: background .15s;
-    }}
-    tbody tr:hover {{ background: #f9fbf9; }}
-    tbody tr:not(:last-child) td {{ border-bottom: 1px solid var(--border); }}
-
-    td {{ padding: 11px 10px; vertical-align: middle; }}
-
-    .td-rank {{ text-align: center; font-size: 1.15rem; }}
-    .rank-badge {{
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 24px; height: 24px;
-      border-radius: 50%;
-      background: var(--border);
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: var(--text-muted);
-    }}
-
-    .td-name {{ line-height: 1.35; }}
-    .player-name  {{ display: block; font-weight: 600; font-size: 0.9rem; }}
-    .player-course {{
-      display: block;
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      margin-top: 2px;
-    }}
-
-    .td-date {{
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      white-space: nowrap;
-    }}
-
-    .td-score {{
-      text-align: right;
-      font-weight: 700;
-      font-size: 1rem;
-      white-space: nowrap;
-    }}
-    .score-under {{ color: #dc2626; }}   /* 언더파  */
-    .score-even  {{ color: var(--green-main); }}  /* 이븐파  */
-    .score-over  {{ color: var(--text-muted); }}  /* 오버파  */
-
-    .empty-row {{
-      text-align: center;
-      color: var(--text-muted);
+    .tab-btn {{
+      flex: 1;
+      padding: 14px 0;
       font-size: 0.85rem;
-      padding: 28px;
-    }}
-
-    /* ── 푸터 ── */
-    footer {{
-      text-align: center;
-      padding: 24px 16px;
-      font-size: 0.73rem;
+      font-weight: 600;
       color: var(--text-muted);
+      cursor: pointer;
+      border: none;
+      background: none;
+      border-bottom: 3px solid transparent;
     }}
-  </style>
-</head>
-<body>
+    .tab-btn.active {{
+      color: var(--green-main);
+      border-bottom-color: var(--green-main);
+    }}
 
-<header>
-  <h1>⛳ 베스트 스코어 TOP 5</h1>
-  <p class="header-sub">전 구장 통합 랭킹 &nbsp;|&nbsp; 업데이트: {d['updated_at']}</p>
-</header>
+    .section {{ display: none; padding: 16px; }}
+    .section.active {{ display: block; }}
 
-<div class="tab-bar">
-  <button class="tab-btn active" onclick="show('weekly', this)">🗓 주간 TOP 5</button>
-  <button class="tab-btn"        onclick="show('monthly', this)">📅 월간 TOP 5</button>
-</div>
+    .period-badge {{
+      display: inline-block;
+      background: var(--green-light);
+      color: var(--green-dark);
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      margin-bottom: 12px;
+    }}
 
-<!-- ── 주간 ── -->
-<div id="weekly" class="section active">
-  <div class="period-badge">📌 {week_label} ({d['period']['week_start']} ~)</div>
-  <div class="grid">
-    {render_card("남자 주간 베스트", "🏌️", d['weekly']['M'], "weekly-m")}
-    {render_card("여자 주간 베스트", "🏌️‍♀️", d['weekly']['F'], "weekly-f")}
-  </div>
-</div>
+    .grid {{ display: grid; grid-template-columns: 1fr; gap: 16px; }}
+    @media (min-width: 720px) {{ .grid {{ grid-template-columns: 1fr 1fr; }} }}
 
-<!-- ── 월간 ── -->
-<div id="monthly" class="section">
-  <div class="period-badge">📌 {month_label} 월간 ({d['period']['month_start']} ~)</div>
-  <div class="grid">
-    {render_card("남자 월간 베스트", "🏌️", d['monthly']['M'], "monthly-m")}
-    {render_card("여자 월간 베스트", "🏌️‍♀️", d['monthly']['F'], "monthly-f")}
-  </div>
-</div>
+    .card {{ background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }}
+    .card-header {{ display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: var(--green-light); border-bottom: 1px solid var(--border); }}
+    .card-title {{ font-size: 0.9rem; font-weight: 700; color: var(--green-dark); }}
 
-<footer>
-  멀리건 사용 라운드 제외 &nbsp;·&nbsp; 동일 선수 최고 기록 1개 반영<br>
-  &copy; {d['updated_at'][:4]} Golf Best Score
-</footer>
-
-<script>
-  function show(id, el) {{
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    el.classList.add('active');
-  }}
-</script>
-</body>
-</html>"""
-
-with open("index.html", "w", encoding="utf-8") as f:
-    f.write(html)
-
-print("✅ index.html 생성 완료")
+    table {{ width: 100%; border-collapse: collapse; }}
+    thead th {{ font-size: 0.65rem; color: var(--text-muted); padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; }}
+    td {{ padding: 10px 12px; border-bottom: 1px
