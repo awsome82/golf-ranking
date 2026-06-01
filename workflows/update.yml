@@ -7,23 +7,23 @@ on:
   repository_dispatch:
     types: [trigger-update]
 
-# 1. Node.js 24 사용 강제 옵트인 (Opt-in)
+# 1. 모든 액션이 Node.js 24에서 실행되도록 강제 설정
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
-    # 최신 Node 환경을 가장 잘 지원하는 런너 사용
+    # Node.js 24 환경을 안정적으로 지원하는 최신 런너 사용
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      # 2. Node.js 24를 지원하는 최신 버전으로 업데이트
+      # 2. actions/checkout@v4 를 v5로 업데이트 (Node 24 지원)
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      # 3. Node.js 24 환경에 최적화된 Python 설정 액션
+      # 3. actions/setup-python@v5 를 v6로 업데이트 (Node 24 지원)
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -37,16 +37,10 @@ jobs:
         env:
           SG_ID: ${{ secrets.SG_ID }}
           SG_PW: ${{ secrets.SG_PW }}
-        # 앞서 생성한 통합 랭킹 스크립트 파일명을 사용합니다.
         run: python update_ranking.py
 
       - name: Generate HTML
         run: python generate_html.py
-
-      - name: Check files
-        run: |
-          test -f index.html && echo "✅ index.html 생성됨"
-          test -f data.json && echo "✅ data.json 생성됨"
 
       - name: Deploy to gh-pages
         run: |
@@ -57,14 +51,11 @@ jobs:
           git config user.email "github-actions@github.com"
 
           git fetch origin
-          # gh-pages 브랜치가 없으면 새로 만들고, 있으면 전환합니다.
           git checkout --orphan gh-pages-new || git checkout -b gh-pages-new
           git rm -rf .
 
           cp /tmp/deploy/* .
 
           git add index.html data.json
-          git commit -m "Update ranking (Node 24) $(date '+%Y-%m-%d %H:%M') [skip ci]"
+          git commit -m "Update ranking (Node 24 Optimized) $(date '+%Y-%m-%d %H:%M') [skip ci]"
           git push origin gh-pages-new:gh-pages --force
-
-          echo "🚀 배포가 완료되었습니다."
