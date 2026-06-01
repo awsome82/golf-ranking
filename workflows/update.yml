@@ -2,21 +2,28 @@ name: Update Golf Ranking
 
 on:
   schedule:
-    - cron: '0 13 * * *' # 매일 오후 10시 (KST) 자동 실행
-  workflow_dispatch:      # 수동 실행 가능
-  repository_dispatch:    # 웹 버튼(Trigger Update) 연동을 위한 설정
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+  repository_dispatch:
     types: [trigger-update]
+
+# 전체 워크플로우에 Node.js 24 사용 강제 설정 (선택 사항)
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
+    # 최신 Runner 환경 사용 (Node 24를 원활하게 지원하는 ubuntu-24.04 권장)
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      # Node.js 24를 지원하는 최신 버전으로 업데이트 (v4 -> v5)
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      # Node.js 24를 지원하는 최신 버전으로 업데이트 (v5 -> v6)
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -28,7 +35,6 @@ jobs:
         env:
           SG_ID: ${{ secrets.SG_ID }}
           SG_PW: ${{ secrets.SG_PW }}
-        # 이전 답변에서 드린 파일명(update_ranking.py)으로 수정했습니다.
         run: python update_ranking.py
 
       - name: Generate HTML
@@ -36,23 +42,19 @@ jobs:
 
       - name: Check generated files
         run: |
-          echo "=== index.html 존재 여부 ==="
           test -f index.html && echo "✅ index.html 존재" || echo "❌ index.html 없음"
-          echo "=== data.json 존재 여부 ==="
           test -f data.json && echo "✅ data.json 존재" || echo "❌ data.json 없음"
 
       - name: Deploy to gh-pages
         run: |
-          # 배포를 위해 임시 디렉토리에 파일 복사
           mkdir -p /tmp/deploy
-          cp index.html /tmp/deploy/
-          cp data.json /tmp/deploy/  # 데이터 추적을 위해 json도 함께 배포하는 것이 좋습니다.
+          cp index.html data.json /tmp/deploy/
 
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
           git fetch origin
-          # gh-pages 브랜치가 없으면 새로 만들고, 있으면 해당 브랜치로 전환
+          # 기존 gh-pages 브랜치가 있다면 초기화 후 재배포
           git checkout --orphan gh-pages-new || git checkout -b gh-pages-new
           git rm -rf .
 
@@ -62,4 +64,4 @@ jobs:
           git commit -m "Update ranking $(date '+%Y-%m-%d %H:%M') [skip ci]"
           git push origin gh-pages-new:gh-pages --force
 
-          echo "✅ 배포 완료"
+          echo "✅ Node.js 24 환경에서 배포 완료"
