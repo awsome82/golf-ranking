@@ -29,8 +29,8 @@ jobs:
       # pandas를 반드시 포함해야 합니다!
       - name: Install dependencies
         run: |
-          pip install requests urllib3 pandas
-
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
       - name: Run ranking script
         env:
           SG_ID: ${{ secrets.SG_ID }}
