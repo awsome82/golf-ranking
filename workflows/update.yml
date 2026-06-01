@@ -1,67 +1,55 @@
-name: Update Golf Ranking
+name: Golf Best Score – 주간/월간 랭킹 업데이트
 
 on:
+  # ── 자동 실행 ─────────────────────────────────────────────
   schedule:
-    - cron: '0 13 * * *'
-  workflow_dispatch:
-  repository_dispatch:
-    types: [trigger-update]
+    # 매일 오전 7시 KST (UTC 22:00 전날) — 평일/주말 모두
+    - cron: "0 13 * * *"
 
-# 전체 워크플로우에 Node.js 24 사용 강제 설정 (선택 사항)
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # ── 수동 실행 ─────────────────────────────────────────────
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
 
 jobs:
-  build:
-    # 최신 Runner 환경 사용 (Node 24를 원활하게 지원하는 ubuntu-24.04 권장)
+  update-ranking:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    timeout-minutes: 15
 
     steps:
-      # Node.js 24를 지원하는 최신 버전으로 업데이트 (v4 -> v5)
-      - uses: actions/checkout@v5
+      # ── 1. 소스 체크아웃 ─────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # Node.js 24를 지원하는 최신 버전으로 업데이트 (v5 -> v6)
-      - uses: actions/setup-python@v6
+      # ── 2. Python 설정 ───────────────────────────────────
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
+      # ── 3. 의존성 설치 ───────────────────────────────────
       - name: Install dependencies
-        run: |
-          pip install requests urllib3
+        run: pip install -r requirements.txt
 
-      - name: Run ranking script
+      # ── 4. 스코어 수집 → data.json ───────────────────────
+      - name: Collect scores
         env:
           SG_ID: ${{ secrets.SG_ID }}
           SG_PW: ${{ secrets.SG_PW }}
-        run: python update_ranking.py
+        run: python golf_ranking.py
 
+      # ── 5. HTML 생성 → index.html ─────────────────────────
       - name: Generate HTML
         run: python generate_html.py
 
-      - name: Check generated files
+      # ── 6. 변경 사항 커밋 & 푸시 ─────────────────────────
+      - name: Commit & push
         run: |
-          test -f index.html && echo "✅ index.html 존재" || echo "❌ index.html 없음"
-          test -f data.json && echo "✅ data.json 존재" || echo "❌ data.json 없음"
-
-      - name: Deploy to gh-pages
-        run: |
-          mkdir -p /tmp/deploy
-          cp index.html data.json /tmp/deploy/
-
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-
-          git fetch origin
-          # 기존 gh-pages 브랜치가 있다면 초기화 후 재배포
-          git checkout --orphan gh-pages-new || git checkout -b gh-pages-new
-          git rm -rf .
-
-          cp /tmp/deploy/* .
-
-          git add index.html data.json
-          git commit -m "Update ranking $(date '+%Y-%m-%d %H:%M') [skip ci]"
-          git push origin gh-pages-new:gh-pages --force
-
-          echo "✅ Node.js 24 환경에서 배포 완료"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data.json index.html
+          git diff --cached --quiet || git commit -m "♻️ 랭킹 자동 업데이트 $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M KST')"
+          git push
