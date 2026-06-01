@@ -1,47 +1,30 @@
-"""
-generate_html.py
-────────────────────────────────────────────────────────────
-data.json → index.html 변환
-주간·월간 / 남녀 탭 전환 UI
-────────────────────────────────────────────────────────────
-"""
-
 import json
 
-with open("data.json", encoding="utf-8") as f:
-    d = json.load(f)
+try:
+    with open("data.json", encoding="utf-8") as f:
+        d = json.load(f)
+except FileNotFoundError:
+    print("data.json 파일이 없습니다.")
+    exit(1)
 
+# 에러가 발생했던 부분: 데이터가 없으면 기본값(오늘)을 사용하도록 수정
+period = d.get("period", {})
+week_start = period.get("week_start", "2026-01-01")
+month_start = period.get("month_start", "2026-01-01")
 
-# ─────────────────────────────────────────────────────────────
-# 랭킹 테이블 렌더
-# ─────────────────────────────────────────────────────────────
-def render_table(items: list) -> str:
-    if not items:
-        return (
-            "<tr><td colspan='4' class='empty-row'>"
-            "이번 기간 기록이 없습니다.</td></tr>"
-        )
-
-    MEDALS = {1: "🥇", 2: "🥈", 3: "🥉"}
-    rows = ""
+def render_table(items):
+    if not items: return "<tr><td colspan='3' style='text-align:center; padding:20px; color:#999;'>기록이 없습니다.</td></tr>"
+    html = ""
     for item in items:
-        rank   = item["rank"]
-        medal  = MEDALS.get(rank, f"<span class='rank-badge'>{rank}</span>")
-        score  = item["score"]
-        s_cls  = "score-under" if score < 0 else ("score-even" if score == 0 else "score-over")
-        s_txt  = f"{score:+d}" if score != 0 else "E"
-
-        rows += f"""
+        medal = {1:"🥇", 2:"🥈", 3:"🥉"}.get(item['rank'], f"<span class='rank-num'>{item['rank']}</span>")
+        score_style = "color:red; font-weight:bold;" if item['score'] < 0 else "color:#1a7f4b;"
+        html += f"""
         <tr>
-          <td class="td-rank">{medal}</td>
-          <td class="td-name">
-            <span class="player-name">{item['name']}</span>
-            <span class="player-course">{item['course']}</span>
-          </td>
-          <td class="td-date">{item['date'][5:]}</td>
-          <td class="td-score {s_cls}">{s_txt}</td>
+            <td class="rank-cell">{medal}</td>
+            <td class="name-cell">{item['name']}<br><small style='color:#888;'>{item['course']}</small></td>
+            <td class="score-cell" style="{score_style}">{item['score']:+d}</td>
         </tr>"""
-    return rows
+    return html
 
 
 # ─────────────────────────────────────────────────────────────
