@@ -22,7 +22,7 @@ def get_rank_data(records, top_n=5):
         if p not in best_per_player or score_val < best_per_player[p]['score']:
             r['score'] = score_val
             best_per_player[p] = r
-    # 낮은 타수(Low Score)가 1등이 되도록 오름차순 정렬
+    # 낮은 타수가 1등이 되도록 오름차순 정렬 (-2, 0, +3...)
     sorted_list = sorted(best_per_player.values(), key=lambda x: (x['score'], x['date']))
     return [{"rank": i+1, **item} for i, item in enumerate(sorted_list[:top_n])]
 
@@ -55,7 +55,7 @@ print(f"🔎 총 {len(raw_candidates)}개의 라운드 후보 분석 중...")
 
 weekly_M, weekly_F, monthly_M, monthly_F = [], [], [], []
 
-# 2. 데이터 분석 및 진짜 멀리건 필터링
+# 2. 데이터 분석
 for gserial, ccid, d_str in raw_candidates:
     dt = datetime.strptime(d_str, "%Y-%m-%d").replace(tzinfo=KST)
     r_json = session.get("https://smanager.sggolf.com/gameInfo/popup/scoreCardPp.json", 
@@ -69,20 +69,32 @@ for gserial, ccid, d_str in raw_candidates:
         name = members.get(f"player{i}", "").strip()
         if not name or "guest" in name.lower(): continue
         
-        # ⚠️ 패딩 규칙 적용: 1 -> '01', 2 -> '02'
-        p_idx = f"{i:02d}" 
+        total_shots = 0
+        total_mulligans = 0
         
-        # ⚠️ 진짜 멀리건 키(m01, m02...)를 사용하여 해당 플레이어의 멀리건만 합산
-        player_mulligans = sum(int(s.get(f"m{p_idx}", 0)) for s in scores if s.get(f"m{p_idx}"))
-        
-        if player_mulligans > 0:
-            print(f"⏩ 제외: {name} ({d_str}) - 멀리건 {player_mulligans}회 사용")
+        # 각 홀을 돌며 해당 플레이어의 스코어와 진짜 멀리건 횟수를 유연하게 합산
+        for s in scores:
+            # 1) 타수 자동 매칭 (shot1 또는 shot01 모두 대응)
+            for shot_key in [f"shot{i}", f"shot{i:02d}"]:
+                if shot_key in s and s[shot_key] is not None:
+                    total_shots += int(s[shot_key])
+                    break
+            
+            # 2) 진짜 멀리건 자동 매칭 (m1, m01, mm1, mm01 대응 / 오류 내던 mul_cnt는 배제)
+            for mul_key in [f"m{i}", f"m{i:02d}", f"mm{i}", f"mm{i:02d}"]:
+                if mul_key in s and s[mul_key] is not None:
+                    total_mulligans += int(s[mul_key])
+                    break
+
+        # ⚠️ 멀리건 사용 시 제외 원칙 철저 적용
+        if total_mulligans > 0:
+            print(f"⏩ 제외: {name} ({d_str}) - 멀리건 {total_mulligans}회 사용")
             continue
 
         try:
-            # 타수 계산도 진짜 키(shot01, shot02...) 사용
-            total = sum(int(s.get(f"shot{p_idx}", 0)) for s in scores if s.get(f"shot{p_idx}"))
-            diff = int(total - 36)
+            if total_shots == 0: continue # 비정상 데이터 방지
+            
+            diff = int(total_shots - 36)
             clean_name = re.sub(r'\(.*?\)', '', name).strip()
             gender = "F" if clean_name in FEMALE_PLAYERS else "M"
             record = {"name": clean_name, "score": diff, "course": members.get("cc", "알수없음"), "date": d_str}
@@ -91,7 +103,7 @@ for gserial, ccid, d_str in raw_candidates:
                 monthly_M.append(record) if gender == "M" else monthly_F.append(record)
             if dt >= start_of_week:
                 weekly_M.append(record) if gender == "M" else weekly_F.append(record)
-            print(f"✅ 수집 성공: {clean_name} ({diff}타, {members.get('cc')})")
+            print(f"✅ 수집 성공: {clean_name} ({diff:+d}타, {members.get('cc')})")
         except: continue
 
 # 3. 데이터 저장
@@ -107,4 +119,4 @@ data = {
 }
 with open("data.json", "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
-print("🚀 정밀 필터링 완료 및 data.json 저장 성공")
+print("🚀 하이브리드 필터링 완료 및 data.json 저장 성공")
