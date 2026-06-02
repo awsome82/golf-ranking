@@ -73,12 +73,19 @@ for row in rows:
                     weekly_M.append(record) if gender == "M" else weekly_F.append(record)
             except: continue
 
-# JSON 저장
-data = {
+# 4. 결과 저장 (중요: 모든 날짜 키값을 포함)
+final_json = {
     "updated_at": now.strftime("%Y-%m-%d %H:%M"),
-    "period": {"week_start": start_of_week.strftime("%Y-%m-%d"), "month_start": start_of_month.strftime("%Y-%m-%d")},
-    "weekly": {"M": get_rank_data(weekly_M), "F": get_rank_data(weekly_F)},
-    "monthly": {"M": get_rank_data(monthly_M), "F": get_rank_data(monthly_F)}
+    "period": {
+        "week_start": start_of_week.strftime("%Y-%m-%d"),
+        "week_end": (start_of_week + timedelta(days=6)).strftime("%Y-%m-%d"), # 추가
+        "month_start": start_of_month.strftime("%Y-%m-%d"),
+        "month_end": now.strftime("%Y-%m-%d") # 추가
+    },
+    "weekly": { "M": get_rank_data(weekly_M), "F": get_rank_data(weekly_F) },
+    "monthly": { "M": get_rank_data(monthly_M), "F": get_rank_data(monthly_F) }
 }
+
 with open("data.json", "w", encoding="utf-8") as f:
-    json.dump(data, f, ensure_ascii=False, indent=2)
+    json.dump(final_json, f, ensure_ascii=False, indent=2)
+    print("✅ data.json 생성 완료 (week_end 포함)")
