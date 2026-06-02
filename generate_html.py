@@ -3,25 +3,29 @@ import json
 try:
     with open("data.json", encoding="utf-8") as f:
         d = json.load(f)
-except FileNotFoundError:
-    print("data.json 없음"); exit(1)
+except:
+    exit(1)
 
 def render_table(items):
-    if not items: return "<tr><td colspan='4' class='empty-row'>기록이 없습니다.</td></tr>"
+    if not items: return "<tr><td colspan='4' style='text-align:center;padding:30px;color:#999'>기록이 없습니다.</td></tr>"
     html = ""
     for item in items:
-        medal = {1:"🥇", 2:"🥈", 3:"🥉"}.get(item['rank'], f"<span class='rank-badge'>{item['rank']}</span>")
+        medal = {1:"🥇", 2:"🥈", 3:"🥉"}.get(item['rank'], f"<span class='badge'>{item['rank']}</span>")
         sc = int(item['score'])
-        score_class = "score-under" if sc < 0 else ("score-even" if sc == 0 else "score-over")
-        score_display = f"{sc:+d}" if sc != 0 else "E"
+        # 골프 스코어 표시: 마이너스는 빨간색, 이븐은 녹색, 오버는 검정
+        color = "#dc2626" if sc < 0 else ("#217a4b" if sc == 0 else "#666")
+        disp = f"{sc:+d}" if sc != 0 else "E"
+        
         html += f"""
         <tr>
-            <td class="td-rank">{medal}</td>
-            <td class="td-name"><span class="player-name">{item['name']}</span><span class="player-course">{item['course']}</span></td>
-            <td class="td-date">{item['date'][5:]}</td>
-            <td class="td-score {score_class}">{score_display}</td>
+            <td style="text-align:center">{medal}</td>
+            <td><b style="font-size:0.9rem">{item['name']}</b><br><small style="color:#888">{item['course']}</small></td>
+            <td style="color:#888;font-size:0.75rem">{item['date'][5:]}</td>
+            <td style="text-align:right;font-weight:bold;color:{color}">{disp}</td>
         </tr>"""
     return html
+
+# (HTML 템플릿 부분은 생략 - 이전 답변의 replace 방식 유지)
 
 def render_card(title, icon, items, card_id):
     return f"""
