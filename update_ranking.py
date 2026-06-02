@@ -5,12 +5,10 @@ import calendar
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 KST = timezone(timedelta(hours=9))
 
-# [설정]
 START_DATE = "2026-06-01" 
 USER_ID = os.environ.get("SG_ID", "")
 PASSWORD = os.environ.get("SG_PW", "")
 
-# 여성 플레이어 명단 (유지)
 FEMALE_PLAYERS = {"신영순", "안은영", "제둘림", "박기례", "정순이", "김명희", "이매실", "김현애", "김경숙", "강미경", "이미경", "박경희", "황애정", "김은하", "서경숙", "안소영", "임혜정", "김진희", "김선희", "김필례", "장해영", "김승혜"}
 
 def get_rank_data(records, top_n=5):
@@ -22,7 +20,6 @@ def get_rank_data(records, top_n=5):
         if p not in best_per_player or score_val < best_per_player[p]['score']:
             r['score'] = score_val
             best_per_player[p] = r
-    # 낮은 타수 우선 정렬
     sorted_list = sorted(best_per_player.values(), key=lambda x: (x['score'], x['date']))
     return [{"rank": i+1, **item} for i, item in enumerate(sorted_list[:top_n])]
 
@@ -38,7 +35,7 @@ start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 if not login(): exit("로그인 실패")
 
-# 1. 3페이지까지 꼼꼼하게 탐색
+# 1. 페이지 탐색
 raw_candidates = []
 for page in range(1, 4):
     resp = session.get("https://smanager.sggolf.com/gameInfo/gameDayState", 
@@ -52,6 +49,7 @@ for page in range(1, 4):
             raw_candidates.append((g_m.group(1).strip(), g_m.group(2).strip(), d_m.group(1)))
 
 weekly_M, weekly_F, monthly_M, monthly_F = [], [], [], []
+printed_debug = False # 진단 로그 제어용
 
 # 2. 데이터 분석
 for gserial, ccid, d_str in raw_candidates:
@@ -63,17 +61,22 @@ for gserial, ccid, d_str in raw_candidates:
     scores = r_json.get("GameInfoListScoreList", [])[:9]
     if len(scores) < 9: continue
 
+    # 🔍 [진단 블록] 딱 한 번만 JSON 내부의 진짜 키 값을 로그에 출력합니다.
+    if not printed_debug:
+        print("\n=== ⚙️ SG골프 스코어카드 데이터 구조 진단 ===")
+        print("1. 요약 정보(members) 키 목록:", list(members.keys()))
+        if scores:
+            print("2. 홀별 정보(scores[0]) 키 목록:", list(scores[0].keys()))
+            print("3. 첫 번째 홀 데이터 샘플:", scores[0])
+        print("=============================================\n")
+        printed_debug = True
+
     for i in range(1, 5):
         name = members.get(f"player{i}", "").strip()
         if not name or "guest" in name.lower(): continue
         
-        # ⚠️ 핵심 수정: '해당 플레이어(i)'의 멀리건만 체크합니다.
-        # i번째 플레이어의 mul_cnt 필드를 모두 합산하여 0보다 크면 제외
-        player_mulligans = sum(int(s.get(f"mul_cnt{i}", 0)) for s in scores)
-        
-        if player_mulligans > 0:
-            print(f"⏩ 제외: {name} ({d_str}) - 멀리건 {player_mulligans}회 사용")
-            continue
+        # ⚠️ 진짜 키를 찾기 전까지 임시로 0 처리하여 필터링 오작동을 차단합니다.
+        player_mulligans = 0 
 
         try:
             total = sum(int(s.get(f"shot{i}", 0)) for s in scores if s.get(f"shot{i}"))
@@ -86,6 +89,7 @@ for gserial, ccid, d_str in raw_candidates:
                 monthly_M.append(record) if gender == "M" else monthly_F.append(record)
             if dt >= start_of_week:
                 weekly_M.append(record) if gender == "M" else weekly_F.append(record)
+            print(f"✅ 수집 성공: {clean_name} ({diff}타, {members.get('cc')})")
         except: continue
 
 # 3. 데이터 저장
