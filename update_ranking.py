@@ -1,5 +1,6 @@
 import requests, re, os, json, urllib3
 from datetime import datetime, timezone, timedelta
+import calendar
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 KST = timezone(timedelta(hours=9))
@@ -20,6 +21,7 @@ def get_rank_data(records, top_n=5):
             r['score'] = score_val
             best_per_player[p] = r
             
+    # 낮은 타수가 1등이 되도록 오름차순 정렬 (-3, -2, E, +1...)
     sorted_list = sorted(best_per_player.values(), key=lambda x: (x['score'], x['date']))
     return [{"rank": i+1, **item} for i, item in enumerate(sorted_list[:top_n])]
 
@@ -29,46 +31,35 @@ def login():
     r = session.post("https://screen.sggolf.com/login/checkProcess", data=data, verify=False)
     return "isLogin = true" in r.text
 
-# 1. 기존 랭킹 데이터 로드 (데일리 누적용)
-existing_data = {}
-if os.path.exists("data.json"):
-    try:
-        with open("data.json", "r", encoding="utf-8") as f:
-            existing_data = json.load(f)
-    except:
-        pass
-
-# 2. 기준 시간 및 최근 2일 데이터 수집 범위 설정
 now = datetime.now(KST)
 start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
 start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-START_DATE = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+end_of_week = start_of_week + timedelta(days=6)
 
-# 3. 주간/월간 리셋 조건 체크 및 기존 데이터 승계
-old_period = existing_data.get("period", {})
-base_weekly_M = existing_data.get("weekly", {}).get("M", []) if old_period.get("week_start") == start_of_week.strftime("%Y-%m-%d") else []
-base_weekly_F = existing_data.get("weekly", {}).get("F", []) if old_period.get("week_start") == start_of_week.strftime("%Y-%m-%d") else []
-base_monthly_M = existing_data.get("monthly", {}).get("M", []) if old_period.get("month_start") == start_of_month.strftime("%Y-%m-%d") else []
-base_monthly_F = existing_data.get("monthly", {}).get("F", []) if old_period.get("month_start") == start_of_month.strftime("%Y-%m-%d") else []
+# 💡 하루하루만 긁는 로직은 가상 환경이 매번 리셋되는 GitHub Actions 특성상 데이터 유실을 유발합니다.
+# 대신 지난달 데이터는 완벽히 차단하고, '이번 달 1일'부터만 실시간으로 산출하여 속도와 무결성을 모두 잡습니다.
+START_DATE = start_of_month.strftime("%Y-%m-%d")
 
 if not login(): exit("로그인 실패")
 
-# 4. 최근 데이터 가볍게 긁어오기
+# 3페이지까지 꼼꼼하게 탐색하여 이번 달의 모든 라운드를 추적
 raw_candidates = []
-resp = session.get("https://smanager.sggolf.com/gameInfo/gameDayState", params={"time_start1": START_DATE}, verify=False)
-rows = re.findall(r"<tr.*?>(.*?)</tr>", resp.text, re.DOTALL)
+for page in range(1, 4):
+    resp = session.get("https://smanager.sggolf.com/gameInfo/gameDayState", 
+                       params={"time_start1": START_DATE, "pageIndex": page}, verify=False)
+    rows = re.findall(r"<tr.*?>(.*?)</tr>", resp.text, re.DOTALL)
+    if not rows or "데이터가 없습니다" in resp.text: break
+    for row in rows:
+        d_m = re.search(r"(\d{4}-\d{2}-\d{2})", row)
+        g_m = re.search(r"go_scoreCardPp_stat\s*\(\s*'[^']*'\s*,\s*'([^']*)'\s*,\s*'[^']*'\s*,\s*'([^']*)'\s*\)", row)
+        if d_m and g_m:
+            raw_candidates.append((g_m.group(1).strip(), g_m.group(2).strip(), d_m.group(1)))
 
-for row in rows:
-    d_m = re.search(r"(\d{4}-\d{2}-\d{2})", row)
-    g_m = re.search(r"go_scoreCardPp_stat\s*\(\s*'[^']*'\s*,\s*'([^']*)'\s*,\s*'[^']*'\s*,\s*'([^']*)'\s*\)", row)
-    if d_m and g_m:
-        raw_candidates.append((g_m.group(1).strip(), g_m.group(2).strip(), d_m.group(1)))
+print(f"🔎 이번 달 1일({START_DATE})부터 현재까지 총 {len(raw_candidates)}개의 라운드 동기화 시작")
 
-print(f"🔎 최근 등록된 {len(raw_candidates)}개의 라운드 증분 분석 시작 (기준일: {START_DATE})")
+weekly_M, weekly_F, monthly_M, monthly_F = [], [], [], []
 
-new_weekly_M, new_weekly_F, new_monthly_M, new_monthly_F = [], [], [], []
-
-# 5. 스코어카드 파싱 및 개인 멀리건 정밀 필터링
+# 데이터 상세 분석
 for gserial, ccid, d_str in raw_candidates:
     dt = datetime.strptime(d_str, "%Y-%m-%d").replace(tzinfo=KST)
     try:
@@ -82,51 +73,53 @@ for gserial, ccid, d_str in raw_candidates:
             name = members.get(f"player{i}", "").strip()
             if not name or "guest" in name.lower(): continue
             
-            # ⚠️ 핵심 수정: 팀 전체가 아닌 오직 '해당 플레이어(i)'의 개인 멀리건 수만 체크합니다.
-            # 룸 공통 일련번호 형식(m01)이 아닌 개인 식별 키(m1, mm1, mul_cnt1)를 합산합니다.
-            player_mulligans = sum(
-                int(s.get(f"m{i}", 0)) + int(s.get(f"mm{i}", 0)) + int(s.get(f"mul_cnt{i}", 0)) 
-                for s in scores
-            )
+            # 1) ⚠️ 개인 멀리건 정밀 검증 (m01, m1, mm01 계열 교차 체크)
+            player_mulligans = 0
+            for s in scores:
+                for mul_key in [f"m{i:02d}", f"m{i}", f"mm{i:02d}", f"mm{i}", f"mul_cnt{i:02d}", f"mul_cnt{i}"]:
+                    if mul_key in s and s[mul_key] is not None:
+                        player_mulligans += int(s[mul_key])
+                        break
             
+            # 오직 본인이 멀리건을 사용한 경우에만 필터링 (동반자 사용은 패스)
             if player_mulligans > 0:
-                print(f"⏩ 제외: {name} ({d_str}) - 개인 멀리건 {player_mulligans}회 사용 검출")
+                print(f"⏩ 제외: {name} ({d_str}) - 개인 멀리건 {player_mulligans}회 사용")
                 continue
 
-            # 정상 스코어 계산 (기존에 완벽히 검증된 수식 유지)
-            total = sum(int(s.get(f"shot{i}", 0)) for s in scores if s.get(f"shot{i}"))
-            if total == 0: continue
+            # 2) 스코어 계산 (shot01, shot1 모두 완벽 대응)
+            total_shots = 0
+            for s in scores:
+                for shot_key in [f"shot{i:02d}", f"shot{i}"]:
+                    if shot_key in s and s[shot_key] is not None:
+                        total_shots += int(s[shot_key])
+                        break
             
-            diff = int(total - 36)
+            if total_shots == 0: continue
+            
+            diff = int(total_shots - 36)
             clean_name = re.sub(r'\(.*?\)', '', name).strip()
             gender = "F" if clean_name in FEMALE_PLAYERS else "M"
             record = {"name": clean_name, "score": diff, "course": members.get("cc", "알수없음"), "date": d_str}
             
             if dt >= start_of_month:
-                new_monthly_M.append(record) if gender == "M" else new_monthly_F.append(record)
-            if dt >= start_of_week:
-                new_weekly_M.append(record) if gender == "M" else new_weekly_F.append(record)
+                monthly_M.append(record) if gender == "M" else monthly_F.append(record)
+            if start_of_week <= dt <= end_of_week:
+                weekly_M.append(record) if gender == "M" else weekly_F.append(record)
             print(f"✅ 수집 성공: {clean_name} ({diff:+d}타, {members.get('cc')})")
     except: continue
 
-# 6. 히스토리 데이터와 신규 데이터 병합 후 재정렬
-final_weekly_M = get_rank_data(base_weekly_M + new_weekly_M)
-final_weekly_F = get_rank_data(base_weekly_F + new_weekly_F)
-final_monthly_M = get_rank_data(base_monthly_M + new_monthly_M)
-final_monthly_F = get_rank_data(base_monthly_F + new_monthly_F)
-
-# 7. 갱신된 내역 저장
+# 최종 구조화 저장
 data = {
     "updated_at": now.strftime("%Y-%m-%d %H:%M"),
     "period": {
         "week_start": start_of_week.strftime("%Y-%m-%d"),
-        "week_end": (start_of_week + timedelta(days=6)).strftime("%Y-%m-%d"),
+        "week_end": end_of_week.strftime("%Y-%m-%d"),
         "month_start": start_of_month.strftime("%Y-%m-%d")
     },
-    "weekly": {"M": final_weekly_M, "F": final_weekly_F},
-    "monthly": {"M": final_monthly_M, "F": final_monthly_F}
+    "weekly": {"M": get_rank_data(weekly_M), "F": get_rank_data(weekly_F)},
+    "monthly": {"M": get_rank_data(monthly_M), "F": get_rank_data(monthly_F)}
 }
 
 with open("data.json", "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
-print("🚀 개인 멀리건 정밀 필터링 및 데이터 증분 누적 완료")
+print("🚀 수집 및 개인 멀리건 필터링 최종 완료")
