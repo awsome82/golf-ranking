@@ -1,12 +1,9 @@
 import requests, re, os, json, urllib3
 from datetime import datetime, timezone, timedelta
-import calendar
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 KST = timezone(timedelta(hours=9))
 
-# [설정] 6월 1일부터의 데이터 수집
-START_DATE = "2026-06-01" 
 USER_ID = os.environ.get("SG_ID", "")
 PASSWORD = os.environ.get("SG_PW", "")
 
@@ -22,7 +19,7 @@ def get_rank_data(records, top_n=5):
         if p not in best_per_player or score_val < best_per_player[p]['score']:
             r['score'] = score_val
             best_per_player[p] = r
-    # 낮은 타수가 1등이 되도록 오름차순 정렬 (-2, 0, +3...)
+            
     sorted_list = sorted(best_per_player.values(), key=lambda x: (x['score'], x['date']))
     return [{"rank": i+1, **item} for i, item in enumerate(sorted_list[:top_n])]
 
@@ -32,81 +29,93 @@ def login():
     r = session.post("https://screen.sggolf.com/login/checkProcess", data=data, verify=False)
     return "isLogin = true" in r.text
 
+# 1. 기존 랭킹 데이터 로드 (데일리 누적용)
+existing_data = {}
+if os.path.exists("data.json"):
+    try:
+        with open("data.json", "r", encoding="utf-8") as f:
+            existing_data = json.load(f)
+    except:
+        pass
+
+# 2. 기준 시간 및 최근 2일 데이터 수집 범위 설정
 now = datetime.now(KST)
 start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
 start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+START_DATE = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+# 3. 주간/월간 리셋 조건 체크 및 기존 데이터 승계
+old_period = existing_data.get("period", {})
+base_weekly_M = existing_data.get("weekly", {}).get("M", []) if old_period.get("week_start") == start_of_week.strftime("%Y-%m-%d") else []
+base_weekly_F = existing_data.get("weekly", {}).get("F", []) if old_period.get("week_start") == start_of_week.strftime("%Y-%m-%d") else []
+base_monthly_M = existing_data.get("monthly", {}).get("M", []) if old_period.get("month_start") == start_of_month.strftime("%Y-%m-%d") else []
+base_monthly_F = existing_data.get("monthly", {}).get("F", []) if old_period.get("month_start") == start_of_month.strftime("%Y-%m-%d") else []
 
 if not login(): exit("로그인 실패")
 
-# 1. 3페이지까지 탐색 범위 유지
+# 4. 최근 데이터 가볍게 긁어오기
 raw_candidates = []
-for page in range(1, 4):
-    resp = session.get("https://smanager.sggolf.com/gameInfo/gameDayState", 
-                       params={"time_start1": START_DATE, "pageIndex": page}, verify=False)
-    rows = re.findall(r"<tr.*?>(.*?)</tr>", resp.text, re.DOTALL)
-    if not rows or "데이터가 없습니다" in resp.text: break
-    for row in rows:
-        d_m = re.search(r"(\d{4}-\d{2}-\d{2})", row)
-        g_m = re.search(r"go_scoreCardPp_stat\s*\(\s*'[^']*'\s*,\s*'([^']*)'\s*,\s*'[^']*'\s*,\s*'([^']*)'\s*\)", row)
-        if d_m and g_m:
-            raw_candidates.append((g_m.group(1).strip(), g_m.group(2).strip(), d_m.group(1)))
+resp = session.get("https://smanager.sggolf.com/gameInfo/gameDayState", params={"time_start1": START_DATE}, verify=False)
+rows = re.findall(r"<tr.*?>(.*?)</tr>", resp.text, re.DOTALL)
 
-print(f"🔎 총 {len(raw_candidates)}개의 라운드 후보 분석 중...")
+for row in rows:
+    d_m = re.search(r"(\d{4}-\d{2}-\d{2})", row)
+    g_m = re.search(r"go_scoreCardPp_stat\s*\(\s*'[^']*'\s*,\s*'([^']*)'\s*,\s*'[^']*'\s*,\s*'([^']*)'\s*\)", row)
+    if d_m and g_m:
+        raw_candidates.append((g_m.group(1).strip(), g_m.group(2).strip(), d_m.group(1)))
 
-weekly_M, weekly_F, monthly_M, monthly_F = [], [], [], []
+print(f"🔎 최근 등록된 {len(raw_candidates)}개의 라운드 증분 분석 시작 (기준일: {START_DATE})")
 
-# 2. 데이터 분석
+new_weekly_M, new_weekly_F, new_monthly_M, new_monthly_F = [], [], [], []
+
+# 5. 스코어카드 파싱 및 개인 멀리건 정밀 필터링
 for gserial, ccid, d_str in raw_candidates:
     dt = datetime.strptime(d_str, "%Y-%m-%d").replace(tzinfo=KST)
-    r_json = session.get("https://smanager.sggolf.com/gameInfo/popup/scoreCardPp.json", 
-                         params={"gserial": gserial, "ccid": ccid}, verify=False).json()
-    
-    members = r_json.get("GamePlayerMember", {})
-    scores = r_json.get("GameInfoListScoreList", [])[:9] # 9홀 기준
-    if len(scores) < 9: continue
+    try:
+        r_json = session.get("https://smanager.sggolf.com/gameInfo/popup/scoreCardPp.json", 
+                             params={"gserial": gserial, "ccid": ccid}, verify=False).json()
+        members = r_json.get("GamePlayerMember", {})
+        scores = r_json.get("GameInfoListScoreList", [])[:9]
+        if len(scores) < 9: continue
 
-    for i in range(1, 5):
-        name = members.get(f"player{i}", "").strip()
-        if not name or "guest" in name.lower(): continue
-        
-        total_shots = 0
-        total_mulligans = 0
-        
-        # 각 홀을 돌며 해당 플레이어의 스코어와 진짜 멀리건 횟수를 유연하게 합산
-        for s in scores:
-            # 1) 타수 자동 매칭 (shot1 또는 shot01 모두 대응)
-            for shot_key in [f"shot{i}", f"shot{i:02d}"]:
-                if shot_key in s and s[shot_key] is not None:
-                    total_shots += int(s[shot_key])
-                    break
+        for i in range(1, 5):
+            name = members.get(f"player{i}", "").strip()
+            if not name or "guest" in name.lower(): continue
             
-            # 2) 진짜 멀리건 자동 매칭 (m1, m01, mm1, mm01 대응 / 오류 내던 mul_cnt는 배제)
-            for mul_key in [f"m{i}", f"m{i:02d}", f"mm{i}", f"mm{i:02d}"]:
-                if mul_key in s and s[mul_key] is not None:
-                    total_mulligans += int(s[mul_key])
-                    break
-
-        # ⚠️ 멀리건 사용 시 제외 원칙 철저 적용
-        if total_mulligans > 0:
-            print(f"⏩ 제외: {name} ({d_str}) - 멀리건 {total_mulligans}회 사용")
-            continue
-
-        try:
-            if total_shots == 0: continue # 비정상 데이터 방지
+            # ⚠️ 핵심 수정: 팀 전체가 아닌 오직 '해당 플레이어(i)'의 개인 멀리건 수만 체크합니다.
+            # 룸 공통 일련번호 형식(m01)이 아닌 개인 식별 키(m1, mm1, mul_cnt1)를 합산합니다.
+            player_mulligans = sum(
+                int(s.get(f"m{i}", 0)) + int(s.get(f"mm{i}", 0)) + int(s.get(f"mul_cnt{i}", 0)) 
+                for s in scores
+            )
             
-            diff = int(total_shots - 36)
+            if player_mulligans > 0:
+                print(f"⏩ 제외: {name} ({d_str}) - 개인 멀리건 {player_mulligans}회 사용 검출")
+                continue
+
+            # 정상 스코어 계산 (기존에 완벽히 검증된 수식 유지)
+            total = sum(int(s.get(f"shot{i}", 0)) for s in scores if s.get(f"shot{i}"))
+            if total == 0: continue
+            
+            diff = int(total - 36)
             clean_name = re.sub(r'\(.*?\)', '', name).strip()
             gender = "F" if clean_name in FEMALE_PLAYERS else "M"
             record = {"name": clean_name, "score": diff, "course": members.get("cc", "알수없음"), "date": d_str}
             
             if dt >= start_of_month:
-                monthly_M.append(record) if gender == "M" else monthly_F.append(record)
+                new_monthly_M.append(record) if gender == "M" else new_monthly_F.append(record)
             if dt >= start_of_week:
-                weekly_M.append(record) if gender == "M" else weekly_F.append(record)
+                new_weekly_M.append(record) if gender == "M" else new_weekly_F.append(record)
             print(f"✅ 수집 성공: {clean_name} ({diff:+d}타, {members.get('cc')})")
-        except: continue
+    except: continue
 
-# 3. 데이터 저장
+# 6. 히스토리 데이터와 신규 데이터 병합 후 재정렬
+final_weekly_M = get_rank_data(base_weekly_M + new_weekly_M)
+final_weekly_F = get_rank_data(base_weekly_F + new_weekly_F)
+final_monthly_M = get_rank_data(base_monthly_M + new_monthly_M)
+final_monthly_F = get_rank_data(base_monthly_F + new_monthly_F)
+
+# 7. 갱신된 내역 저장
 data = {
     "updated_at": now.strftime("%Y-%m-%d %H:%M"),
     "period": {
@@ -114,9 +123,10 @@ data = {
         "week_end": (start_of_week + timedelta(days=6)).strftime("%Y-%m-%d"),
         "month_start": start_of_month.strftime("%Y-%m-%d")
     },
-    "weekly": {"M": get_rank_data(weekly_M), "F": get_rank_data(weekly_F)},
-    "monthly": {"M": get_rank_data(monthly_M), "F": get_rank_data(monthly_F)}
+    "weekly": {"M": final_weekly_M, "F": final_weekly_F},
+    "monthly": {"M": final_monthly_M, "F": final_monthly_F}
 }
+
 with open("data.json", "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
-print("🚀 하이브리드 필터링 완료 및 data.json 저장 성공")
+print("🚀 개인 멀리건 정밀 필터링 및 데이터 증분 누적 완료")
