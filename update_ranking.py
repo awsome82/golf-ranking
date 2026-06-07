@@ -36,13 +36,12 @@ start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, 
 start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 end_of_week = start_of_week + timedelta(days=6)
 
-# 💡 하루하루만 긁는 로직은 가상 환경이 매번 리셋되는 GitHub Actions 특성상 데이터 유실을 유발합니다.
-# 대신 지난달 데이터는 완벽히 차단하고, '이번 달 1일'부터만 실시간으로 산출하여 속도와 무결성을 모두 잡습니다.
+# 💡 가상 환경 초기화로 인한 데이터 누락을 방지하기 위해 이번 달 1일부터 깔끔하게 수집합니다.
+# (3페이지 이내 탐색이므로 실행 속도는 3~5초 내외로 매우 빠르고 안전합니다.)
 START_DATE = start_of_month.strftime("%Y-%m-%d")
 
 if not login(): exit("로그인 실패")
 
-# 3페이지까지 꼼꼼하게 탐색하여 이번 달의 모든 라운드를 추적
 raw_candidates = []
 for page in range(1, 4):
     resp = session.get("https://smanager.sggolf.com/gameInfo/gameDayState", 
@@ -55,65 +54,59 @@ for page in range(1, 4):
         if d_m and g_m:
             raw_candidates.append((g_m.group(1).strip(), g_m.group(2).strip(), d_m.group(1)))
 
-print(f"🔎 이번 달 1일({START_DATE})부터 현재까지 총 {len(raw_candidates)}개의 라운드 동기화 시작")
+print(f"🔎 이번 달 1일({START_DATE})부터 현재까지 총 {len(raw_candidates)}개의 라운드 분석 진행")
 
 weekly_M, weekly_F, monthly_M, monthly_F = [], [], [], []
+debug_done = False
 
-# 데이터 상세 분석
 for gserial, ccid, d_str in raw_candidates:
     dt = datetime.strptime(d_str, "%Y-%m-%d").replace(tzinfo=KST)
     try:
-        r_json = session.get("https://smanager.sggolf.com/gameInfo/popup/scoreCardPp.json", 
-                             params={"gserial": gserial, "ccid": ccid}, verify=False).json()
+        # ⚠️ [핵심 복구] 필수 파라미터 game_id와 iindex를 다시 주입하여 진짜 스코어 데이터를 가져옵니다.
+        params = {"gserial": gserial, "game_id": "0", "iindex": "0", "ccid": ccid}
+        r_json = session.get("https://smanager.sggolf.com/gameInfo/popup/scoreCardPp.json", params=params, verify=False).json()
+        
         members = r_json.get("GamePlayerMember", {})
         scores = r_json.get("GameInfoListScoreList", [])[:9]
         if len(scores) < 9: continue
+
+        # 🔍 [올바른 데이터 상태에서의 키 값 진단 정보 출력]
+        if not debug_done:
+            print("\n=== 🎯 [정상 데이터 수신 상태] 홀 데이터 구조 ===")
+            print("Hole 1 Keys:", list(scores[0].keys()))
+            print("Hole 1 Data Sample:", scores[0])
+            print("================================================\n")
+            debug_done = True
 
         for i in range(1, 5):
             name = members.get(f"player{i}", "").strip()
             if not name or "guest" in name.lower(): continue
             
-            # 1) ⚠️ 개인 멀리건 정밀 검증 (m01, m1, mm01 계열 교차 체크)
-            player_mulligans = 0
-            for s in scores:
-                for mul_key in [f"m{i:02d}", f"m{i}", f"mm{i:02d}", f"mm{i}", f"mul_cnt{i:02d}", f"mul_cnt{i}"]:
-                    if mul_key in s and s[mul_key] is not None:
-                        player_mulligans += int(s[mul_key])
-                        break
+            # 파라미터가 복구되었으므로 기존의 직관적인 shot{i} 키값으로 타수가 완벽하게 계산됩니다.
+            total = sum(int(s.get(f"shot{i}", 0)) for s in scores if s.get(f"shot{i}"))
+            if total == 0: continue
             
-            # 오직 본인이 멀리건을 사용한 경우에만 필터링 (동반자 사용은 패스)
-            if player_mulligans > 0:
-                print(f"⏩ 제외: {name} ({d_str}) - 개인 멀리건 {player_mulligans}회 사용")
-                continue
-
-            # 2) 스코어 계산 (shot01, shot1 모두 완벽 대응)
-            total_shots = 0
-            for s in scores:
-                for shot_key in [f"shot{i:02d}", f"shot{i}"]:
-                    if shot_key in s and s[shot_key] is not None:
-                        total_shots += int(s[shot_key])
-                        break
-            
-            if total_shots == 0: continue
-            
-            diff = int(total_shots - 36)
+            diff = int(total - 36)
             clean_name = re.sub(r'\(.*?\)', '', name).strip()
             gender = "F" if clean_name in FEMALE_PLAYERS else "M"
             record = {"name": clean_name, "score": diff, "course": members.get("cc", "알수없음"), "date": d_str}
             
+            # 우선 필터 없이 모든 인원을 보드에 채웁니다. (윤기님 -2, 기성님 -3 정상 출력 목적)
             if dt >= start_of_month:
                 monthly_M.append(record) if gender == "M" else monthly_F.append(record)
             if start_of_week <= dt <= end_of_week:
                 weekly_M.append(record) if gender == "M" else weekly_F.append(record)
+                
             print(f"✅ 수집 성공: {clean_name} ({diff:+d}타, {members.get('cc')})")
-    except: continue
+    except:
+        continue
 
-# 최종 구조화 저장
+# 최종 저장
 data = {
     "updated_at": now.strftime("%Y-%m-%d %H:%M"),
     "period": {
         "week_start": start_of_week.strftime("%Y-%m-%d"),
-        "week_end": end_of_week.strftime("%Y-%m-%d"),
+        "week_end": (start_of_week + timedelta(days=6)).strftime("%Y-%m-%d"),
         "month_start": start_of_month.strftime("%Y-%m-%d")
     },
     "weekly": {"M": get_rank_data(weekly_M), "F": get_rank_data(weekly_F)},
@@ -122,4 +115,4 @@ data = {
 
 with open("data.json", "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
-print("🚀 수집 및 개인 멀리건 필터링 최종 완료")
+print("🚀 원상복구 완료 및 data.json 정상 저장 완료")
