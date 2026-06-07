@@ -42,7 +42,7 @@ html_template = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>⛳ 골프 랭킹</title>
+  <title>⛳ 벽동회 스크린 골프 리더보드</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, sans-serif; background: #f3f7f4; color: #1a1a1a; padding-bottom: 40px; }
@@ -70,7 +70,7 @@ html_template = """<!DOCTYPE html>
   </style>
 </head>
 <body>
-<header><h1>⛳ 골프 베스트 스코어</h1><p style="font-size:0.75rem;opacity:0.8;margin-top:5px;">업데이트: __UPDATED_AT__</p></header>
+<header><h1>⛳ 벽동회 스크린 골프 리더보드</h1><p style="font-size:0.75rem;opacity:0.8;margin-top:5px;">업데이트: __UPDATED_AT__</p></header>
 <div class="tab-bar">
   <button class="tab-btn active" onclick="show('weekly', this)">🗓 주간 TOP 5</button>
   <button class="tab-btn" onclick="show('monthly', this)">📅 월간 TOP 5</button>
