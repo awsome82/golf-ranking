@@ -1,4 +1,4 @@
-import requests, re, os, json, urllib3
+import requests, re, os, json, urllib3, traceback
 from datetime import datetime, timezone, timedelta
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -11,7 +11,7 @@ PASSWORD = os.environ.get("SG_PW", "")
 FEMALE_PLAYERS = {"신영순", "안은영", "제둘림", "박기례", "정순이", "김명희", "이매실", "김현애", "김경숙", "강미경", "이미경", "박경희", "황애정", "김은하", "서경숙", "안소영", "임혜정", "김진희", "김선희", "김필례", "장해영", "김승혜"}
 
 def check_mulligan_value(val) -> bool:
-    """문자열 내의 모든 숫자를 추출하여 합산 판별 ('1/0', '0/1', '3/0' 완벽 대응)"""
+    """문자열 내의 모든 숫자를 추출하여 합산 판별 ('1/0', '3/0' 대응)"""
     if val is None:
         return False
     numbers = re.findall(r'\d+', str(val).strip())
@@ -31,8 +31,6 @@ def get_rank_data(records, top_n=5):
         if p not in best_per_player or score_val < best_per_player[p]['score']:
             r['score'] = score_val
             best_per_player[p] = r
-            
-    # 낮은 타수가 1등이 되도록 오름차순 정렬
     sorted_list = sorted(best_per_player.values(), key=lambda x: (x['score'], x['date']))
     return [{"rank": i+1, **item} for i, item in enumerate(sorted_list[:top_n])]
 
@@ -83,12 +81,14 @@ for gserial, ccid, d_str in raw_candidates:
         if not score_list: continue
 
         for i in range(1, 5):
-            player_name = members.get(f"player{i}", members.get(f"player{i:02d}", "")).strip()
-            if not player_name: continue
+            # 💡 None 데이터가 인입되어도 스트링 메서드 크래시가 나지 않도록 안전하게 예외 차단
+            raw_player_name = members.get(f"player{i}") or members.get(f"player{i:02d}")
+            if not raw_player_name: continue
             
+            player_name = str(raw_player_name).strip()
             clean_name = re.sub(r'\(.*?\)', '', player_name).strip()
 
-            # ── 💡 [로그 누락 해결] shot1과 shot01 양쪽 형식을 모두 지원하여 유효 홀 수집 ──
+            # ── 유효 홀 추출 (패딩 안전 매칭) ──
             played_holes = []
             for s in score_list:
                 shot_val = None
@@ -103,11 +103,10 @@ for gserial, ccid, d_str in raw_candidates:
                     except (ValueError, TypeError):
                         continue
 
-            # 정상적으로 기록된 9개 홀이 확보되지 않으면 패스
             if len(played_holes) < 9: continue
             valid_holes = played_holes[:9]
 
-            # ── 멀리건 체크 (요청 템플릿 적용 + 패딩 확장형 매칭) ──────────────────
+            # ── 멀리건 체크 (지정 양식 완벽 고정) ──────────────────
             is_mulligan = check_mulligan_value(members.get(f"mulligan{i}", "0")) or \
                           check_mulligan_value(members.get(f"mulligan{i:02d}", "0"))
             if not is_mulligan:
@@ -122,7 +121,7 @@ for gserial, ccid, d_str in raw_candidates:
                 print(f"⏩ 제외: {clean_name} ({d_str}) - 개인 멀리건 사용 확인")
                 continue
 
-            # ── 타수 정밀 계산 ───────────────────────────────────────────────
+            # ── 타수 계산 ───────────────────────────────────────────────
             total_shots = sum(shot for _, shot in valid_holes)
             if total_shots == 0: continue
             
@@ -136,7 +135,9 @@ for gserial, ccid, d_str in raw_candidates:
                 weekly_M.append(record) if gender == "M" else weekly_F.append(record)
                 
             print(f"✅ 수집 성공: {clean_name} ({diff:+d}타, {members.get('cc')})")
-    except:
+    except Exception as e:
+        # 🔍 소리 없이 증발하던 버그를 잡기 위해 구체적인 에러 상황을 콘솔에 강제 출력합니다.
+        print(f"❌ [라운드 해석 에러] 일련번호: {gserial} | 원인: {e}")
         continue
 
 # 최종 조립 및 저장
@@ -153,4 +154,4 @@ data = {
 
 with open("data.json", "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
-print("🚀 아크로 CC 누락 해결 및 랭킹 정렬 최종 완료")
+print("🚀 크래시 쉴드 및 에러 추적 시스템 패치 완료")
