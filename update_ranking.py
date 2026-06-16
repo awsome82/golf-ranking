@@ -8,17 +8,17 @@ USER_ID = os.environ.get("SG_ID", "")
 PASSWORD = os.environ.get("SG_PW", "")
 
 # 여성 플레이어 명단
-FEMALE_PLAYERS = {"신영순", "안은영", "제둘림", "박기례", "정순이", "김명희", "이매실", "김현애", "김경숙", "강미경", "이미경", "박경희", "황애정", "김은하", "서경숙", "안소영", "임혜정", "김진희", "김선희", "김필례", "장해영", "김승혜", "은하"}
+FEMALE_PLAYERS = {"신영순", "안은영", "제둘림", "박기례", "정순이", "김명희", "이매실", "김현애", "김경숙", "강미경", "이미경", "박경희", "황애정", "김은하", "서경숙", "안소영", "임혜정", "김진희", "김선희", "김필례", "장해영", "김승혜"}
 
 def check_mulligan_value(val) -> bool:
-    """코랩 소스 코드의 멀리건 판별 로직 적용"""
+    """문자열 내의 모든 숫자를 추출하여 합산 판별 ('1/0', '0/1', '3/0' 완벽 대응)"""
     if val is None:
         return False
     numbers = re.findall(r'\d+', str(val).strip())
     return sum(int(n) for n in numbers) > 0 if numbers else False
 
 def get_total_pages(html: str) -> int:
-    """코랩 소스 코드의 동적 페이지 수 계산 로직 적용"""
+    """하단 스크립트 기반 동적 전체 페이지 계산"""
     nums = re.findall(r'onclick="moveList\((\d+)\);', html)
     return max(map(int, nums)) if nums else 1
 
@@ -51,14 +51,12 @@ START_DATE = start_of_month.strftime("%Y-%m-%d")
 
 if not login(): exit("로그인 실패")
 
-# 1. 첫 페이지를 먼저 호출하여 총 페이지 수를 동적으로 계산합니다.
-first_resp = session.get("https://smanager.sggolf.com/gameInfo/gameDayState", 
-                         params={"time_start1": START_DATE}, verify=False)
+# 동적 페이징 시스템 구동
+first_resp = session.get("https://smanager.sggolf.com/gameInfo/gameDayState", params={"time_start1": START_DATE}, verify=False)
 total_pages = get_total_pages(first_resp.text)
-print(f"📊 이번 달 데이터 동적 분석 시작: 총 {total_pages}페이지 탐색")
+print(f"📊 동적 페이지 연산 완료: 총 {total_pages}개 페이지 전수 조사 시작")
 
 raw_candidates = []
-# 2. 계산된 total_pages 만큼 루프를 돌기 때문에 데이터 증가에 완벽히 대응합니다.
 for page in range(1, total_pages + 1):
     page_html = first_resp.text if page == 1 else session.get(
         "https://smanager.sggolf.com/gameInfo/gameDayState", 
@@ -85,46 +83,50 @@ for gserial, ccid, d_str in raw_candidates:
         if not score_list: continue
 
         for i in range(1, 5):
-            name = members.get(f"player{i}", "").strip()
-            if not name or "guest" in name.lower(): continue
+            player_name = members.get(f"player{i}", members.get(f"player{i:02d}", "")).strip()
+            if not player_name: continue
             
-            # 실제 타수가 적힌 유효 홀 필터링
+            clean_name = re.sub(r'\(.*?\)', '', player_name).strip()
+
+            # ── 💡 [로그 누락 해결] shot1과 shot01 양쪽 형식을 모두 지원하여 유효 홀 수집 ──
             played_holes = []
             for s in score_list:
-                has_shot = False
+                shot_val = None
                 for k in [f"shot{i}", f"shot{i:02d}"]:
-                    if k in s and s[k] is not None and int(s[k]) > 0:
-                        has_shot = True
+                    if k in s and s[k] not in (None, "-", "", "&nbsp;"):
+                        shot_val = s[k]
                         break
-                if has_shot:
-                    played_holes.append(s)
+                if shot_val is not None:
+                    try:
+                        if int(str(shot_val).strip()) > 0:
+                            played_holes.append((s, int(str(shot_val).strip())))
+                    except (ValueError, TypeError):
+                        continue
 
-            if len(played_holes) != 9: continue
+            # 정상적으로 기록된 9개 홀이 확보되지 않으면 패스
+            if len(played_holes) < 9: continue
+            valid_holes = played_holes[:9]
 
-            # ── 멀리건 체크 (코랩 소스 코드의 검증 구조 그대로 이식) ──────────────────
-            is_mulligan = check_mulligan_value(members.get(f"mulligan{i}", "0"))
+            # ── 멀리건 체크 (요청 템플릿 적용 + 패딩 확장형 매칭) ──────────────────
+            is_mulligan = check_mulligan_value(members.get(f"mulligan{i}", "0")) or \
+                          check_mulligan_value(members.get(f"mulligan{i:02d}", "0"))
             if not is_mulligan:
-                for hole in played_holes:
+                for hole, _ in valid_holes:
                     if check_mulligan_value(hole.get(f"mul_cnt{i}", "0")) or \
-                       check_mulligan_value(hole.get(f"mulligan{i}", "0")):
+                       check_mulligan_value(hole.get(f"mul_cnt{i:02d}", "0")) or \
+                       check_mulligan_value(hole.get(f"mulligan{i}", "0")) or \
+                       check_mulligan_value(hole.get(f"mulligan{i:02d}", "0")):
                         is_mulligan = True
                         break
             if is_mulligan:
-                print(f"⏩ 제외: {name} ({d_str}) - 개인 멀리건 사용 확인")
+                print(f"⏩ 제외: {clean_name} ({d_str}) - 개인 멀리건 사용 확인")
                 continue
 
-            # 타수 계산
-            total_shots = 0
-            for s in played_holes:
-                for k in [f"shot{i}", f"shot{i:02d}"]:
-                    if k in s and s[k] is not None:
-                        total_shots += int(s[k])
-                        break
-
+            # ── 타수 정밀 계산 ───────────────────────────────────────────────
+            total_shots = sum(shot for _, shot in valid_holes)
             if total_shots == 0: continue
             
             diff = int(total_shots - 36)
-            clean_name = re.sub(r'\(.*?\)', '', name).strip()
             gender = "F" if clean_name in FEMALE_PLAYERS else "M"
             record = {"name": clean_name, "score": diff, "course": members.get("cc", "알수없음"), "date": d_str}
             
@@ -137,7 +139,7 @@ for gserial, ccid, d_str in raw_candidates:
     except:
         continue
 
-# 데이터 저장
+# 최종 조립 및 저장
 data = {
     "updated_at": now.strftime("%Y-%m-%d %H:%M"),
     "period": {
@@ -151,4 +153,4 @@ data = {
 
 with open("data.json", "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
-print("🚀 동적 페이지 확장 및 멀리건 이식 완료")
+print("🚀 아크로 CC 누락 해결 및 랭킹 정렬 최종 완료")
