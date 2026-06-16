@@ -11,7 +11,6 @@ PASSWORD = os.environ.get("SG_PW", "")
 FEMALE_PLAYERS = {"신영순", "안은영", "제둘림", "박기례", "정순이", "김명희", "이매실", "김현애", "김경숙", "강미경", "이미경", "박경희", "황애정", "김은하", "서경숙", "안소영", "임혜정", "김진희", "김선희", "김필례", "장해영", "김승혜", "은하"}
 
 def check_mulligan_value(val):
-    """멀리건 데이터 값을 안전하게 판별하는 헬퍼 함수"""
     if val is None:
         return False
     try:
@@ -29,6 +28,7 @@ def get_rank_data(records, top_n=5):
             r['score'] = score_val
             best_per_player[p] = r
             
+    # 낮은 타수가 1등이 되도록 오름차순 정렬
     sorted_list = sorted(best_per_player.values(), key=lambda x: (x['score'], x['date']))
     return [{"rank": i+1, **item} for i, item in enumerate(sorted_list[:top_n])]
 
@@ -47,6 +47,7 @@ START_DATE = start_of_month.strftime("%Y-%m-%d")
 
 if not login(): exit("로그인 실패")
 
+# 이번 달 라운드 데이터 추적
 raw_candidates = []
 for page in range(1, 6):
     resp = session.get("https://smanager.sggolf.com/gameInfo/gameDayState", 
@@ -90,23 +91,14 @@ for gserial, ccid, d_str in raw_candidates:
 
             if len(played_holes) != 9: continue
 
-            # ── 멀리건 체크 (요청 코드 구조 반영 및 다중 키 확장) ─────────────────
-            # 1단계: 요약 정보(members)에서 멀리건 값 판별
-            is_mulligan = check_mulligan_value(members.get(f"mulligan{i}")) or \
-                          check_mulligan_value(members.get(f"m{i:02d}")) or \
-                          check_mulligan_value(members.get(f"m{i}"))
-            
-            # 2단계: 요약에 없다면 개별 홀 데이터(played_holes) 순회 조사
+            # ── 멀리건 체크 (요청하신 지정 로직만 엄격 적용) ──────────────────
+            is_mulligan = check_mulligan_value(members.get(f"mulligan{i}", "0"))
             if not is_mulligan:
                 for hole in played_holes:
-                    if check_mulligan_value(hole.get(f"mul_cnt{i}")) or \
-                       check_mulligan_value(hole.get(f"mulligan{i}")) or \
-                       check_mulligan_value(hole.get(f"m{i:02d}")) or \
-                       check_mulligan_value(hole.get(f"mm{i:02d}")):
+                    if check_mulligan_value(hole.get(f"mul_cnt{i}", "0")) or \
+                       check_mulligan_value(hole.get(f"mulligan{i}", "0")):
                         is_mulligan = True
                         break
-                        
-            # 3단계: 멀리건 적발 시 해당 플레이어 스킵 처리
             if is_mulligan:
                 print(f"⏩ 제외: {name} ({d_str}) - 개인 멀리건 사용 확인")
                 continue
@@ -149,4 +141,4 @@ data = {
 
 with open("data.json", "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
-print("🚀 지정 템플릿 기반 멀리건 정밀 스캔 완료")
+print("🚀 지정 로직 기반 멀리건 색출 및 순위 동기화 완료")
