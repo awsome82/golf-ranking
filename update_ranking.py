@@ -10,13 +10,17 @@ PASSWORD = os.environ.get("SG_PW", "")
 # 여성 플레이어 명단
 FEMALE_PLAYERS = {"신영순", "안은영", "제둘림", "박기례", "정순이", "김명희", "이매실", "김현애", "김경숙", "강미경", "이미경", "박경희", "황애정", "김은하", "서경숙", "안소영", "임혜정", "김진희", "김선희", "김필례", "장해영", "김승혜", "은하"}
 
-def check_mulligan_value(val):
+def check_mulligan_value(val) -> bool:
+    """코랩 소스 코드의 멀리건 판별 로직 적용"""
     if val is None:
         return False
-    try:
-        return int(val) > 0
-    except (ValueError, TypeError):
-        return False
+    numbers = re.findall(r'\d+', str(val).strip())
+    return sum(int(n) for n in numbers) > 0 if numbers else False
+
+def get_total_pages(html: str) -> int:
+    """코랩 소스 코드의 동적 페이지 수 계산 로직 적용"""
+    nums = re.findall(r'onclick="moveList\((\d+)\);', html)
+    return max(map(int, nums)) if nums else 1
 
 def get_rank_data(records, top_n=5):
     if not records: return []
@@ -47,20 +51,26 @@ START_DATE = start_of_month.strftime("%Y-%m-%d")
 
 if not login(): exit("로그인 실패")
 
-# 이번 달 라운드 데이터 추적
+# 1. 첫 페이지를 먼저 호출하여 총 페이지 수를 동적으로 계산합니다.
+first_resp = session.get("https://smanager.sggolf.com/gameInfo/gameDayState", 
+                         params={"time_start1": START_DATE}, verify=False)
+total_pages = get_total_pages(first_resp.text)
+print(f"📊 이번 달 데이터 동적 분석 시작: 총 {total_pages}페이지 탐색")
+
 raw_candidates = []
-for page in range(1, 6):
-    resp = session.get("https://smanager.sggolf.com/gameInfo/gameDayState", 
-                       params={"time_start1": START_DATE, "pageIndex": page}, verify=False)
-    rows = re.findall(r"<tr.*?>(.*?)</tr>", resp.text, re.DOTALL)
-    if not rows or "데이터가 없습니다" in resp.text: break
+# 2. 계산된 total_pages 만큼 루프를 돌기 때문에 데이터 증가에 완벽히 대응합니다.
+for page in range(1, total_pages + 1):
+    page_html = first_resp.text if page == 1 else session.get(
+        "https://smanager.sggolf.com/gameInfo/gameDayState", 
+        params={"time_start1": START_DATE, "pageIndex": page}, verify=False
+    ).text
+    
+    rows = re.findall(r"<tr.*?>(.*?)</tr>", page_html, re.DOTALL)
     for row in rows:
         d_m = re.search(r"(\d{4}-\d{2}-\d{2})", row)
         g_m = re.search(r"go_scoreCardPp_stat\s*\(\s*'[^']*'\s*,\s*'([^']*)'\s*,\s*'[^']*'\s*,\s*'([^']*)'\s*\)", row)
         if d_m and g_m:
             raw_candidates.append((g_m.group(1).strip(), g_m.group(2).strip(), d_m.group(1)))
-
-print(f"🔎 이번 달 총 {len(raw_candidates)}개의 라운드 후보 검증 시작")
 
 weekly_M, weekly_F, monthly_M, monthly_F = [], [], [], []
 
@@ -91,7 +101,7 @@ for gserial, ccid, d_str in raw_candidates:
 
             if len(played_holes) != 9: continue
 
-            # ── 멀리건 체크 (요청하신 지정 로직만 엄격 적용) ──────────────────
+            # ── 멀리건 체크 (코랩 소스 코드의 검증 구조 그대로 이식) ──────────────────
             is_mulligan = check_mulligan_value(members.get(f"mulligan{i}", "0"))
             if not is_mulligan:
                 for hole in played_holes:
@@ -141,4 +151,4 @@ data = {
 
 with open("data.json", "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
-print("🚀 지정 로직 기반 멀리건 색출 및 순위 동기화 완료")
+print("🚀 동적 페이지 확장 및 멀리건 이식 완료")
