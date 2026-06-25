@@ -55,5 +55,10 @@ start_of_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, 
 start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 end_of_week = start_of_week + timedelta(days=6)
 
-# 💡 [대회 연동 핵심]: 7월로 넘어가도 6월 대회 데이터가 잘리지 않도록 대회 시작일(6/22)을 하한선으로 고정합니다.
-event_start_dt = datetime(
+# 💡 대회 시작일(6/22) 하한선 지정 연산 (모든 괄호 정상 폐쇄 완료)
+event_start_dt = datetime(2026, 6, 22, tzinfo=KST)
+START_DATE = min(start_of_month, start_of_week, event_start_dt).strftime("%Y-%m-%d")
+
+if not login(): exit("로그인 실패")
+
+first_resp = session
