@@ -1,10 +1,13 @@
 import json
+import sys
 
+# ── 💡 [핵심 수정] 침묵하는 에러를 깨우고 진짜 원인을 로그에 강제 출력 ──
 try:
     with open("data.json", encoding="utf-8") as f:
         d = json.load(f)
-except:
-    exit(1)
+except Exception as e:
+    print(f"❌ [빌드 실패] data.json 파일 로드 중 에러 발생: {e}", file=sys.stderr)
+    sys.exit(1)
 
 def render_table(items):
     if not items: return "<tr><td colspan='4' style='text-align:center;padding:30px;color:#999'>기록이 없습니다.</td></tr>"
@@ -65,14 +68,12 @@ html_template = """<!DOCTYPE html>
 <body>
 <header><h1>⛳ 벽동회 스크린 골프 리더보드</h1><p style="font-size:0.75rem;opacity:0.8;margin-top:5px;">업데이트: __UPDATED_AT__</p></header>
 
-<!-- 탭 구성 개편: 대회 랭킹을 가장 앞으로 배치하고 active 처리 -->
 <div class="tab-bar">
-  <button class="tab-btn active" onclick="show('tournament', this)">🏆 이스트힐 대회</button>
+  <button class="tab-btn active" onclick="show('tournament', this)">🏆 이스트힐 대회 리더보드</button>
   <button class="tab-btn" onclick="show('weekly', this)">🗓 주간 TOP 5</button>
   <button class="tab-btn" onclick="show('monthly', this)">📅 월간 TOP 5</button>
 </div>
 
-<!-- 대회 랭킹 섹션 (메인 노출) -->
 <div id="tournament" class="section active">
   <div style="font-size:0.75rem;padding:10px;font-weight:700;color:#1a5c38;">📌 구장: 이스트힐 CC | 기간: 2026-06-22 ~ 2026-07-09 (남/여 TOP 10)</div>
   <div class="grid">__TOURNAMENT_M____TOURNAMENT_F__</div>
