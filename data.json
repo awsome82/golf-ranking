@@ -1,0 +1,466 @@
+{
+  "updated_at": "2026-07-02 00:37",
+  "period": {
+    "week_start": "2026-06-29",
+    "week_end": "2026-07-05",
+    "month_start": "2026-07-01"
+  },
+  "weekly": {
+    "M": [
+      {
+        "rank": 1,
+        "name": "배성용",
+        "score": -4,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 4,
+        "par_cnt": 5
+      },
+      {
+        "rank": 2,
+        "name": "정윤기",
+        "score": -3,
+        "course": "이스트힐",
+        "date": "2026-06-30",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 3,
+        "par_cnt": 6
+      },
+      {
+        "rank": 3,
+        "name": "김기성",
+        "score": 0,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 3,
+        "par_cnt": 3
+      },
+      {
+        "rank": 4,
+        "name": "강석한",
+        "score": 0,
+        "course": "이스트힐",
+        "date": "2026-06-30",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 3,
+        "par_cnt": 3
+      },
+      {
+        "rank": 5,
+        "name": "김진권",
+        "score": 1,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 3,
+        "par_cnt": 4
+      }
+    ],
+    "F": [
+      {
+        "rank": 1,
+        "name": "정순이",
+        "score": 1,
+        "course": "이스트힐",
+        "date": "2026-06-30",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 2,
+        "par_cnt": 5
+      },
+      {
+        "rank": 2,
+        "name": "제둘림",
+        "score": 3,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 1,
+        "par_cnt": 4
+      },
+      {
+        "rank": 3,
+        "name": "이매실",
+        "score": 4,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 1,
+        "par_cnt": 4
+      },
+      {
+        "rank": 4,
+        "name": "안은영",
+        "score": 5,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 1,
+        "par_cnt": 4
+      },
+      {
+        "rank": 5,
+        "name": "김경숙",
+        "score": 5,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 0,
+        "par_cnt": 5
+      }
+    ]
+  },
+  "monthly": {
+    "M": [
+      {
+        "rank": 1,
+        "name": "정윤기",
+        "score": 0,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 4,
+        "par_cnt": 4
+      },
+      {
+        "rank": 2,
+        "name": "김기성",
+        "score": 0,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 1,
+        "par_cnt": 7
+      },
+      {
+        "rank": 3,
+        "name": "김병옥",
+        "score": 1,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 2,
+        "par_cnt": 4
+      },
+      {
+        "rank": 4,
+        "name": "배성용",
+        "score": 4,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 4,
+        "par_cnt": 3
+      },
+      {
+        "rank": 5,
+        "name": "김강율",
+        "score": 5,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 1,
+        "par_cnt": 5
+      }
+    ],
+    "F": [
+      {
+        "rank": 1,
+        "name": "정순이",
+        "score": 5,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 0,
+        "par_cnt": 5
+      },
+      {
+        "rank": 2,
+        "name": "이미경",
+        "score": 6,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 0,
+        "par_cnt": 4
+      },
+      {
+        "rank": 3,
+        "name": "제둘림",
+        "score": 6,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 0,
+        "par_cnt": 4
+      },
+      {
+        "rank": 4,
+        "name": "장해영",
+        "score": 8,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 0,
+        "par_cnt": 5
+      },
+      {
+        "rank": 5,
+        "name": "김선희",
+        "score": 10,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 0,
+        "par_cnt": 2
+      }
+    ]
+  },
+  "tournament": {
+    "M": [
+      {
+        "rank": 1,
+        "name": "김기성",
+        "score": -4,
+        "course": "이스트힐",
+        "date": "2026-06-26",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 5,
+        "par_cnt": 3
+      },
+      {
+        "rank": 2,
+        "name": "배성용",
+        "score": -4,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 4,
+        "par_cnt": 5
+      },
+      {
+        "rank": 3,
+        "name": "정윤기",
+        "score": -3,
+        "course": "이스트힐",
+        "date": "2026-06-30",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 3,
+        "par_cnt": 6
+      },
+      {
+        "rank": 4,
+        "name": "박경일",
+        "score": -1,
+        "course": "이스트힐",
+        "date": "2026-06-24",
+        "albatross_cnt": 0,
+        "eagle_cnt": 2,
+        "birdie_cnt": 1,
+        "par_cnt": 3
+      },
+      {
+        "rank": 5,
+        "name": "김진권",
+        "score": -1,
+        "course": "이스트힐",
+        "date": "2026-06-24",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 1,
+        "par_cnt": 8
+      },
+      {
+        "rank": 6,
+        "name": "강석한",
+        "score": 0,
+        "course": "이스트힐",
+        "date": "2026-06-30",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 3,
+        "par_cnt": 3
+      },
+      {
+        "rank": 7,
+        "name": "최동열",
+        "score": 1,
+        "course": "이스트힐",
+        "date": "2026-06-24",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 2,
+        "par_cnt": 4
+      },
+      {
+        "rank": 8,
+        "name": "김병옥",
+        "score": 1,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 2,
+        "par_cnt": 4
+      },
+      {
+        "rank": 9,
+        "name": "곽재삼",
+        "score": 2,
+        "course": "이스트힐",
+        "date": "2026-06-28",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 1,
+        "par_cnt": 5
+      },
+      {
+        "rank": 10,
+        "name": "김강율",
+        "score": 2,
+        "course": "이스트힐",
+        "date": "2026-06-27",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 0,
+        "par_cnt": 8
+      }
+    ],
+    "F": [
+      {
+        "rank": 1,
+        "name": "신영순",
+        "score": -2,
+        "course": "이스트힐",
+        "date": "2026-06-26",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 3,
+        "par_cnt": 5
+      },
+      {
+        "rank": 2,
+        "name": "정순이",
+        "score": 1,
+        "course": "이스트힐",
+        "date": "2026-06-30",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 2,
+        "par_cnt": 5
+      },
+      {
+        "rank": 3,
+        "name": "매실",
+        "score": 3,
+        "course": "이스트힐",
+        "date": "2026-06-23",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 1,
+        "par_cnt": 5
+      },
+      {
+        "rank": 4,
+        "name": "제둘림",
+        "score": 3,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 1,
+        "par_cnt": 4
+      },
+      {
+        "rank": 5,
+        "name": "이매실",
+        "score": 4,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 1,
+        "par_cnt": 4
+      },
+      {
+        "rank": 6,
+        "name": "안은영",
+        "score": 5,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 1,
+        "par_cnt": 4
+      },
+      {
+        "rank": 7,
+        "name": "김경숙",
+        "score": 5,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 0,
+        "par_cnt": 5
+      },
+      {
+        "rank": 8,
+        "name": "김선희",
+        "score": 6,
+        "course": "이스트힐",
+        "date": "2026-06-29",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 2,
+        "par_cnt": 1
+      },
+      {
+        "rank": 9,
+        "name": "이미경",
+        "score": 6,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 0,
+        "par_cnt": 4
+      },
+      {
+        "rank": 10,
+        "name": "장해영",
+        "score": 8,
+        "course": "이스트힐",
+        "date": "2026-07-01",
+        "albatross_cnt": 0,
+        "eagle_cnt": 0,
+        "birdie_cnt": 0,
+        "par_cnt": 5
+      }
+    ]
+  }
+}
