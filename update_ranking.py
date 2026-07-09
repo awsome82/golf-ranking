@@ -217,7 +217,7 @@ data = {
     },
     "weekly": {"M": get_rank_data(weekly_M), "F": get_rank_data(weekly_F)},
     "monthly": {"M": get_rank_data(monthly_M), "F": get_rank_data(monthly_F)},
-    "tournament": {"M": get_rank_data(tournament_M, top_n=10), "F": get_rank_data(tournament_F, top_n=10)}
+    "tournament": {"M": get_rank_data(tournament_M, top_n=15), "F": get_rank_data(tournament_F, top_n=15)}
 }
 
 # 최종 물리 파일 저장 강제화
